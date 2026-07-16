@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chumash Check-In Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;800&family=Lora:ital,wght@0,400;0,600;1,400&family=Frank+Ruhl+Libre:wght@700&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: 'Lora', serif; background-color: #fff9f0; color: #3e362e;
+    display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+  }
+  .intake-container {
+    background: #fff; padding: 50px; border: 1px solid #e3dcd2; border-radius: 4px; 
+    box-shadow: 0 10px 30px rgba(62,54,46,0.05); max-width: 550px; width: 100%; text-align: center;
+  }
+  h1 { font-family: 'Playfair Display', serif; font-size: 2.4rem; margin-bottom: 30px; font-weight: 800; }
+  .btn-primary, .intake-choice, .btn-record {
+    display: block; width: 100%; padding: 16px; margin: 12px 0; border: 1px solid #d3c7b7;
+    background-color: #fff; cursor: pointer; font-family: 'Lora', serif; font-size: 1.05rem; transition: all 0.3s ease;
+  }
+  .btn-primary { background-color: #3e362e; color: #fff9f0; border: none; text-transform: uppercase; font-weight: 600; }
+  .btn-primary:hover { background-color: #5a4e42; }
+  .intake-choice:hover { background-color: #fcf6eb; border-color: #3e362e; }
+  .btn-record { background-color: #900; color: white; border: none; font-weight: 600; }
+  .btn-record.recording { background-color: #f00; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+  .intake-hebrew-word { font-family: 'Frank Ruhl Libre', serif; font-size: 4rem; margin: 30px 0; color: #2c2520; }
+  .student-input { width: calc(100% - 32px); padding: 15px; font-family: 'Lora', serif; font-size: 1.1rem; border: 1px solid #d3c7b7; margin-bottom: 25px; background: #fdfbf8; }
+  .intake-progress { height: 4px; background: #eee; margin: 20px 0; }
+  .intake-progress-bar { height: 100%; width: 0%; background: #3e362e; transition: width 0.4s; }
+  .intake-skip { background: none; border: none; color: #a6998a; cursor: pointer; font-size: 0.9rem; margin-top: 20px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="intake-container">
+    <h1>Chumash Check-In Hub</h1>
+    <div id="nameArea"><input type="text" id="studentName" class="student-input" placeholder="Enter Full Name"><button class="btn-primary" id="nameSubmitBtn">Begin</button></div>
+    <div id="hubMenuArea" class="hidden">
+        <p>Welcome, <span id="displayName"></span>. What are we doing today?</p>
+        <button class="intake-choice" onclick="startVocab()">Vocabulary Check-In</button>
+        <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
+    </div>
+    <div id="selfEvalArea" class="hidden">
+        <p>Choose your vocab comfort level:</p>
+        <button class="intake-choice" onclick="setVocabLevel('Just Starting', 1)">Just Starting</button>
+        <button class="intake-choice" onclick="setVocabLevel('Beginner', 1)">Beginner</button>
+        <button class="intake-choice" onclick="setVocabLevel('Intermediate', 2)">Intermediate</button>
+        <button class="intake-choice" onclick="setVocabLevel('Advanced', 3)">Advanced</button>
+    </div>
+    <div id="quizProgress" class="hidden"><div class="intake-progress-bar" id="progressBar"></div></div>
+    <div id="quizArea" class="hidden"></div>
+    <div id="audioArea" class="hidden">
+        <p>Read the assigned Chumash passage clearly into your microphone.</p>
+        <button id="recordBtn" class="btn-record" onclick="toggleRecording()">🎤 Start Recording</button>
+        <p id="audioStatus" style="font-size: 0.9rem; color: #666; margin-top: 15px;"></p>
+    </div>
+    <div id="resultsArea" class="hidden"><h2 id="resultsTitle">Task Complete</h2><p id="resultsDesc"></p></div>
+</div>
+
+<script>
+// --- YOUR APPS SCRIPT URL ---
+// Paste the URL you got in Step 2 here!
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzWZECRB0BXAlvrxZ_FkCgRBjAsmj5EyMLjquRBs0nLm3NFkM17L5GrUhS4JLFL4xzD/exec";
+
+const state = { name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0 };
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
+
+document.getElementById('nameSubmitBtn').addEventListener('click', () => {
+    state.name = document.getElementById('studentName').value.trim();
+    if (!state.name) return alert("Please enter your name.");
+    document.getElementById('displayName').innerText = state.name;
+    hide('nameArea'); show('hubMenuArea');
+});
+
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+
+// (Paste your FULL 41-word QUESTION_BANK array right here)
+const TOTAL_QUESTIONS = 10;
+const QUESTION_BANK = [
+  { ri: 1, rank: 1, display: "אֶרֶץ", meaning: "land", options: ["land", "sky", "water", "light"] },
+  { ri: 11, rank: 2, display: "אֲשֶׁר", meaning: "that / which", options: ["that / which", "when", "there", "because"] },
+  { ri: 25, rank: 3, display: "פֶּן", meaning: "lest / so that not", options: ["lest / so that not", "maybe", "also", "here"] }
+];
+
+function startVocab() { hide('hubMenuArea'); show('selfEvalArea'); }
+function setVocabLevel(evalName, rank) {
+    state.selfEval = evalName; state.currentRank = rank;
+    hide('selfEvalArea'); show('quizArea'); show('quizProgress'); runNext();
+}
+
+function runNext() {
+    state.questionCount++;
+    if (state.questionCount > TOTAL_QUESTIONS) return finishVocab();
+    document.getElementById('progressBar').style.width = ((state.questionCount-1)/TOTAL_QUESTIONS*100)+'%';
+    let potential = QUESTION_BANK.filter(q => q.rank === state.currentRank && !state.history.find(h => h.ri === q.ri));
+    if (potential.length === 0) potential = QUESTION_BANK.filter(q => !state.history.find(h => h.ri === q.ri));
+    const q = potential[Math.floor(Math.random()*potential.length)];
+    const choices = [...q.options].sort(() => Math.random() - 0.5);
+    document.getElementById('quizArea').innerHTML = `
+      <div class="intake-hebrew-word">${q.display}</div>
+      <div class="intake-choices">${choices.map(o => `<button class="intake-choice" onclick="window.ans('${o}', '${q.meaning}', ${q.ri}, '${q.display}', ${q.rank})">${o}</button>`).join('')}</div>
+      <button class="intake-skip" onclick="window.ans(null, '${q.meaning}', ${q.ri}, '${q.display}', ${q.rank})">I'm not sure &rarr;</button>`;
+}
+
+window.ans = (picked, correct, ri, word, rank) => {
+    state.history.push({ ri, word, correct: (picked === correct), picked: picked ? picked : "Skipped" });
+    if((picked === correct) && state.currentRank < 3) state.currentRank++;
+    else if(!(picked === correct) && state.currentRank > 1) state.currentRank--;
+    runNext();
+};
+
+function finishVocab() {
+    hide('quizArea'); hide('quizProgress');
+    document.getElementById('resultsDesc').innerHTML = `Checking answers...`; show('resultsArea');
+    const score = state.history.filter(h => h.correct).length;
+    
+    // FETCH TO EXTERNAL APPS SCRIPT URL
+    fetch(GAS_WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+            action: "saveVocab",
+            payload: { name: state.name, selfEval: state.selfEval, finalRank: state.currentRank, score: score, total: TOTAL_QUESTIONS, history: state.history }
+        }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(data => { document.getElementById('resultsDesc').innerHTML = `Vocab Check-In logged successfully!`; })
+    .catch(err => { document.getElementById('resultsDesc').innerHTML = `Error saving data.`; });
+}
+
+function startAudio() { hide('hubMenuArea'); show('audioArea'); }
+
+async function toggleRecording() {
+    const btn = document.getElementById('recordBtn');
+    const status = document.getElementById('audioStatus');
+
+    if (!isRecording) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.onstop = sendAudioToServer;
+            mediaRecorder.start();
+            isRecording = true;
+            btn.innerText = "⏹ Stop & Submit";
+            btn.classList.add("recording");
+            status.innerText = "Recording... Read clearly.";
+        } catch (err) {
+            alert("Microphone access denied. Please check your browser settings.");
+        }
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.innerText = "Uploading...";
+        btn.classList.remove("recording");
+        btn.disabled = true;
+        status.innerText = "Analyzing reading with AI... this takes about 10-15 seconds.";
+    }
+}
+
+function sendAudioToServer() {
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const reader = new FileReader();
+    reader.readAsDataURL(audioBlob);
+    reader.onloadend = function() {
+        const base64Audio = reader.result.split(',')[1];
+        
+        // FETCH TO EXTERNAL APPS SCRIPT URL
+        fetch(GAS_WEB_APP_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "processAudio",
+                payload: { base64Audio: base64Audio, studentName: state.name }
+            }),
+            headers: { "Content-Type": "text/plain;charset=utf-8" }
+        })
+        .then(res => res.json())
+        .then(data => {
+            hide('audioArea');
+            document.getElementById('resultsDesc').innerHTML = `Audio processed! Your teacher has the results.`;
+            show('resultsArea');
+        })
+        .catch(err => {
+            document.getElementById('audioStatus').innerText = "An error occurred while uploading.";
+        });
+    }
+}
+</script>
+</body>
+</html>
