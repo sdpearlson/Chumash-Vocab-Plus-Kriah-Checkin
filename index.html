@@ -77,11 +77,13 @@ let recordingTimer = null;
 let activeStream = null; // the live mic stream, so Back can release it properly
 let isUploading = false; // guards against closing the tab mid-upload
 
-// Warn before the student can close/refresh the tab while a save is in
-// flight — once the tab is gone, the in-progress request is aborted and
-// nothing gets written to the sheet, so this is the only real protection.
+// Warn before the student can close/refresh the tab while recording OR
+// while a save is in flight — once the tab is gone, the recording is lost
+// and any in-progress request is aborted, so this is the only real
+// protection against losing a submission. Browsers show their own generic
+// wording here regardless of what's set below.
 window.addEventListener('beforeunload', (e) => {
-    if (isUploading) {
+    if (isUploading || isRecording) {
         e.preventDefault();
         e.returnValue = '';
     }
@@ -240,7 +242,7 @@ async function toggleRecording() {
         btn.classList.remove("recording");
         btn.disabled = true;
         document.getElementById('audioBackBtn').style.display = 'none'; // don't allow leaving mid-upload
-        status.innerText = "Analyzing reading with AI... this takes about 10-15 seconds.";
+        status.innerText = "Analyzing reading with AI... this takes about 10-15 seconds. Please do not exit the app or close this window.";
     }
 }
 
