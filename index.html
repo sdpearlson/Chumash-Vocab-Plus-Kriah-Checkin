@@ -48,6 +48,7 @@
         <button class="intake-choice" onclick="setVocabLevel('Beginner', 1)">Beginner</button>
         <button class="intake-choice" onclick="setVocabLevel('Intermediate', 2)">Intermediate</button>
         <button class="intake-choice" onclick="setVocabLevel('Advanced', 3)">Advanced</button>
+        <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="quizProgress" class="hidden"><div class="intake-progress-bar" id="progressBar"></div></div>
     <div id="quizArea" class="hidden"></div>
@@ -56,8 +57,11 @@
         <p style="font-size: 0.85rem; color: #a6998a;">Recordings auto-stop at 90 seconds — that's enough for a fluency passage and keeps uploads reliable.</p>
         <button id="recordBtn" class="btn-record" onclick="toggleRecording()">🎤 Start Recording</button>
         <p id="audioStatus" style="font-size: 0.9rem; color: #666; margin-top: 15px;"></p>
+        <button id="audioBackBtn" class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
-    <div id="resultsArea" class="hidden"><h2 id="resultsTitle">Task Complete</h2><p id="resultsDesc"></p></div>
+    <div id="resultsArea" class="hidden"><h2 id="resultsTitle">Task Complete</h2><p id="resultsDesc"></p>
+        <button class="intake-choice" onclick="goToHub()">Back to Menu</button>
+    </div>
 </div>
 
 <script>
@@ -70,6 +74,48 @@ let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
 let recordingTimer = null;
+let activeStream = null; // the live mic stream, so Back can release it properly
+let isUploading = false; // guards against closing the tab mid-upload
+
+// Warn before the student can close/refresh the tab while a save is in
+// flight — once the tab is gone, the in-progress request is aborted and
+// nothing gets written to the sheet, so this is the only real protection.
+window.addEventListener('beforeunload', (e) => {
+    if (isUploading) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
+// Returns to the main menu from any screen. If a recording is in progress,
+// stops it and releases the microphone WITHOUT submitting it.
+function goToHub() {
+    if (isRecording) {
+        isRecording = false;
+        clearInterval(recordingTimer);
+        if (mediaRecorder) {
+            mediaRecorder.onstop = null; // detach so it doesn't try to upload
+            if (mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        }
+    }
+    if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+        activeStream = null;
+    }
+    hide('selfEvalArea'); hide('quizArea'); hide('quizProgress');
+    hide('audioArea'); hide('resultsArea');
+
+    // Reset per-attempt state so a fresh vocab run or recording starts clean.
+    state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
+    const recordBtn = document.getElementById('recordBtn');
+    recordBtn.disabled = false;
+    recordBtn.innerText = "🎤 Start Recording";
+    recordBtn.classList.remove("recording");
+    document.getElementById('audioStatus').innerText = "";
+    document.getElementById('audioBackBtn').style.display = '';
+
+    show('hubMenuArea');
+}
 
 // Gemini's inline-audio request cap is 20MB (prompt + base64 audio combined).
 // Auto-stopping recordings keeps every submission comfortably under that limit
@@ -130,6 +176,7 @@ function finishVocab() {
     const score = state.history.filter(h => h.correct).length;
 
     // FETCH TO EXTERNAL APPS SCRIPT URL
+    isUploading = true;
     fetch(GAS_WEB_APP_URL, {
         method: "POST",
         body: JSON.stringify({
@@ -140,13 +187,14 @@ function finishVocab() {
     })
     .then(res => res.json())
     .then(data => {
+        isUploading = false;
         if (data.success) {
             document.getElementById('resultsDesc').innerHTML = `Vocab Check-In logged successfully!`;
         } else {
             document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
         }
     })
-    .catch(err => { document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
+    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
 }
 
 function startAudio() { hide('hubMenuArea'); show('audioArea'); }
@@ -158,6 +206,7 @@ async function toggleRecording() {
     if (!isRecording) {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            activeStream = stream;
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
@@ -190,6 +239,7 @@ async function toggleRecording() {
         btn.innerText = "Uploading...";
         btn.classList.remove("recording");
         btn.disabled = true;
+        document.getElementById('audioBackBtn').style.display = 'none'; // don't allow leaving mid-upload
         status.innerText = "Analyzing reading with AI... this takes about 10-15 seconds.";
     }
 }
@@ -203,6 +253,7 @@ function sendAudioToServer() {
             "That recording is too long to process reliably. Please re-record a shorter passage (under 90 seconds).";
         document.getElementById('recordBtn').disabled = false;
         document.getElementById('recordBtn').innerText = "🎤 Start Recording";
+        document.getElementById('audioBackBtn').style.display = '';
         return;
     }
 
@@ -212,6 +263,7 @@ function sendAudioToServer() {
         const base64Audio = reader.result.split(',')[1];
 
         // FETCH TO EXTERNAL APPS SCRIPT URL
+        isUploading = true;
         fetch(GAS_WEB_APP_URL, {
             method: "POST",
             body: JSON.stringify({
@@ -222,6 +274,7 @@ function sendAudioToServer() {
         })
         .then(res => res.json())
         .then(data => {
+            isUploading = false;
             if (data.success) {
                 hide('audioArea');
                 document.getElementById('resultsDesc').innerHTML = `Audio processed! Your teacher has the results.`;
@@ -232,12 +285,15 @@ function sendAudioToServer() {
                 document.getElementById('audioStatus').innerText = `Error: ${data.error || 'Unknown error'}. Please try recording again.`;
                 document.getElementById('recordBtn').disabled = false;
                 document.getElementById('recordBtn').innerText = "🎤 Start Recording";
+                document.getElementById('audioBackBtn').style.display = '';
             }
         })
         .catch(err => {
+            isUploading = false;
             document.getElementById('audioStatus').innerText = "An error occurred while uploading: " + err;
             document.getElementById('recordBtn').disabled = false;
             document.getElementById('recordBtn').innerText = "🎤 Start Recording";
+            document.getElementById('audioBackBtn').style.display = '';
         });
     }
 }
