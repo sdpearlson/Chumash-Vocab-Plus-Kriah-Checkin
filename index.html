@@ -25,7 +25,10 @@
   .btn-record { background-color: #900; color: white; border: none; font-weight: 600; }
   .btn-record.recording { background-color: #f00; animation: pulse 1.5s infinite; }
   @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
-  .intake-hebrew-word { font-family: 'Frank Ruhl Libre', serif; font-size: 4rem; margin: 30px 0; color: #2c2520; }
+  .intake-hebrew-word {
+    font-family: 'Frank Ruhl Libre', serif; font-size: 4rem; margin: 30px 0; color: #2c2520;
+    min-height: 100px; display: flex; align-items: center; justify-content: center;
+  }
   .student-input { width: calc(100% - 32px); padding: 15px; font-family: 'Lora', serif; font-size: 1.1rem; border: 1px solid #d3c7b7; margin-bottom: 25px; background: #fdfbf8; }
   .intake-progress { height: 4px; background: #eee; margin: 20px 0; }
   .intake-progress-bar { height: 100%; width: 0%; background: #3e362e; transition: width 0.4s; }
@@ -139,7 +142,8 @@ function show(id) { document.getElementById(id).classList.remove('hidden'); }
 
 // Official JSAT Level 8 Chumash Vocabulary list (281 words), reviewed and
 // re-tiered by the teacher.
-const TOTAL_QUESTIONS = 10;
+const TOTAL_QUESTIONS = 15;
+const BLOCK_SIZE = 5; // questions per difficulty block
 const QUESTION_BANK = [
   { ri: 1, rank: 1, display: "אָב", meaning: 'father', options: ['work', 'mountain', 'eye', 'father'] },
   { ri: 2, rank: 1, display: "אֶבֶן", meaning: 'stone', options: ['ox', 'fire', 'stone', 'leader / prince'] },
@@ -437,17 +441,59 @@ function runNext() {
     let potential = QUESTION_BANK.filter(q => q.rank === state.currentRank && !state.history.find(h => h.ri === q.ri));
     if (potential.length === 0) potential = QUESTION_BANK.filter(q => !state.history.find(h => h.ri === q.ri));
     const q = potential[Math.floor(Math.random()*potential.length)];
-    const choices = [...q.options].sort(() => Math.random() - 0.5);
-    document.getElementById('quizArea').innerHTML = `
-      <div class="intake-hebrew-word">${q.display}</div>
-      <div class="intake-choices">${choices.map(o => `<button class="intake-choice" onclick="window.ans('${o}', '${q.meaning}', ${q.ri}, '${q.display}', ${q.rank})">${o}</button>`).join('')}</div>
-      <button class="intake-skip" onclick="window.ans(null, '${q.meaning}', ${q.ri}, '${q.display}', ${q.rank})">I'm not sure &rarr;</button>`;
+    // De-dupe option text (a couple of JSAT words share the same English
+    // gloss, e.g. two words both meaning "work") so no two buttons ever show
+    // identical text.
+    const choices = [...new Set(q.options)].sort(() => Math.random() - 0.5);
+
+    const quizArea = document.getElementById('quizArea');
+    quizArea.innerHTML = '';
+
+    const wordDiv = document.createElement('div');
+    wordDiv.className = 'intake-hebrew-word';
+    wordDiv.textContent = q.display;
+    quizArea.appendChild(wordDiv);
+
+    const choicesDiv = document.createElement('div');
+    choicesDiv.className = 'intake-choices';
+    choices.forEach(o => {
+        const btn = document.createElement('button');
+        btn.className = 'intake-choice';
+        btn.textContent = o; // textContent, not innerHTML/inline onclick strings,
+        btn.addEventListener('click', () => window.ans(o, q));
+        choicesDiv.appendChild(btn);
+    });
+    quizArea.appendChild(choicesDiv);
+
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'intake-skip';
+    skipBtn.innerHTML = "I'm not sure &rarr;";
+    skipBtn.addEventListener('click', () => window.ans(null, q));
+    quizArea.appendChild(skipBtn);
 }
 
-window.ans = (picked, correct, ri, word, rank) => {
-    state.history.push({ ri, word, correct: (picked === correct), picked: picked ? picked : "Skipped" });
-    if((picked === correct) && state.currentRank < 3) state.currentRank++;
-    else if(!(picked === correct) && state.currentRank > 1) state.currentRank--;
+window.ans = (picked, q) => {
+    const isCorrect = (picked === q.meaning);
+    state.history.push({ ri: q.ri, word: q.display, correct: isCorrect, picked: picked ? picked : "Skipped" });
+
+    // Adaptive difficulty:
+    // - Any wrong/skipped answer immediately eases off one level (floor: rank 1),
+    //   so a student who starts struggling gets easier words right away.
+    // - Whole blocks of BLOCK_SIZE questions are used to decide whether to step
+    //   UP a level: only after finishing a block mostly/fully correct at the
+    //   current level do the next BLOCK_SIZE questions move up a rank.
+    if (!isCorrect && state.currentRank > 1) {
+        state.currentRank--;
+    }
+    if (state.questionCount % BLOCK_SIZE === 0) {
+        const block = state.history.slice(-BLOCK_SIZE);
+        const blockCorrect = block.filter(h => h.correct).length;
+        if (blockCorrect >= BLOCK_SIZE - 1 && state.currentRank < 3) {
+            state.currentRank++; // aced the block -> harder words next block
+        } else if (blockCorrect <= 2 && state.currentRank > 1) {
+            state.currentRank--; // struggled with the block -> easier words next block
+        }
+    }
     runNext();
 };
 
