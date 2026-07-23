@@ -853,7 +853,7 @@ window.ansKnowledge = (picked, q) => {
 function finishKnowledge() {
     hide('quizArea'); hide('quizProgress');
     document.getElementById('resultsDesc').innerHTML =
-        `Generating your results and recommendations...<br><span style="font-size:0.85rem;color:#a6998a;">Please do not exit the app or close this window.</span>`;
+        `Submitting your answers...<br><span style="font-size:0.85rem;color:#a6998a;">Please do not exit the app or close this window.</span>`;
     show('resultsArea');
 
     const seferScores = {};
@@ -878,9 +878,10 @@ function finishKnowledge() {
     .then(data => {
         isUploading = false;
         if (data.success) {
-            const scoreLines = KNOWLEDGE_SEFARIM.map(s => `${s}: ${seferScores[s].correct}/${seferScores[s].total}`).join('<br>');
-            const recLine = data.recommendation ? `<br><br><strong>Areas to focus on:</strong> ${data.recommendation}` : '';
-            document.getElementById('resultsDesc').innerHTML = `Chumash Knowledge Check-In logged successfully!<br><br>${scoreLines}${recLine}`;
+            // Scores and the AI recommendation are intentionally not shown here —
+            // for now this section stays teacher-facing only, on the Knowledge
+            // Results tab of the Google Sheet.
+            document.getElementById('resultsDesc').innerHTML = `Chumash Knowledge Check-In logged successfully!`;
         } else {
             document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
         }
