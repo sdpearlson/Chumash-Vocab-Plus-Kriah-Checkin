@@ -29,6 +29,10 @@
     font-family: 'Frank Ruhl Libre', serif; font-size: 4rem; margin: 30px 0; color: #2c2520;
     min-height: 100px; display: flex; align-items: center; justify-content: center;
   }
+  .intake-question-text {
+    font-family: 'Lora', serif; font-size: 1.3rem; line-height: 1.5; margin: 20px 0; color: #2c2520;
+    min-height: 100px; display: flex; align-items: center; justify-content: center; text-align: center;
+  }
   .student-input { width: calc(100% - 32px); padding: 15px; font-family: 'Lora', serif; font-size: 1.1rem; border: 1px solid #d3c7b7; margin-bottom: 25px; background: #fdfbf8; }
   .intake-progress { height: 4px; background: #eee; margin: 20px 0; }
   .intake-progress-bar { height: 100%; width: 0%; background: #3e362e; transition: width 0.4s; }
@@ -43,6 +47,7 @@
     <div id="hubMenuArea" class="hidden">
         <p>Welcome, <span id="displayName"></span>. What are we doing today?</p>
         <button class="intake-choice" onclick="startVocab()">Vocabulary Check-In</button>
+        <button class="intake-choice" onclick="startKnowledgeIntro()">Chumash Knowledge Check-In</button>
         <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
     </div>
     <div id="selfEvalArea" class="hidden">
@@ -51,6 +56,11 @@
         <button class="intake-choice" onclick="setVocabLevel('Beginner', 1)">Beginner</button>
         <button class="intake-choice" onclick="setVocabLevel('Intermediate', 2)">Intermediate</button>
         <button class="intake-choice" onclick="setVocabLevel('Advanced', 3)">Advanced</button>
+        <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
+    </div>
+    <div id="knowledgeIntroArea" class="hidden">
+        <p>You'll get 25 questions — 5 from each Sefer of the Chumash (Bereishit, Shemot, Vayikra, Bamidbar, Devarim).</p>
+        <button class="intake-choice" onclick="beginKnowledge()">Begin</button>
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="quizProgress" class="hidden"><div class="intake-progress-bar" id="progressBar"></div></div>
@@ -72,7 +82,10 @@
 // Paste the URL you got in Step 2 here!
 const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2DM6175X7uHjWM3ICSesbcUWJYWmxogqnbNJpKHp3oStb-1ch-VGu/exec";
 
-const state = { name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0 };
+const state = {
+    name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0,
+    knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: []
+};
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -107,11 +120,12 @@ function goToHub() {
         activeStream.getTracks().forEach(track => track.stop());
         activeStream = null;
     }
-    hide('selfEvalArea'); hide('quizArea'); hide('quizProgress');
+    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('quizArea'); hide('quizProgress');
     hide('audioArea'); hide('resultsArea');
 
-    // Reset per-attempt state so a fresh vocab run or recording starts clean.
+    // Reset per-attempt state so a fresh vocab/knowledge run or recording starts clean.
     state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
+    state.knowledgeQueue = []; state.knowledgeIndex = 0; state.knowledgeHistory = [];
     const recordBtn = document.getElementById('recordBtn');
     recordBtn.disabled = false;
     recordBtn.innerText = "🎤 Start Recording";
@@ -434,33 +448,29 @@ function setVocabLevel(evalName, rank) {
     hide('selfEvalArea'); show('quizArea'); show('quizProgress'); runNext();
 }
 
-function runNext() {
-    state.questionCount++;
-    if (state.questionCount > TOTAL_QUESTIONS) return finishVocab();
-    document.getElementById('progressBar').style.width = ((state.questionCount-1)/TOTAL_QUESTIONS*100)+'%';
-    let potential = QUESTION_BANK.filter(q => q.rank === state.currentRank && !state.history.find(h => h.ri === q.ri));
-    if (potential.length === 0) potential = QUESTION_BANK.filter(q => !state.history.find(h => h.ri === q.ri));
-    const q = potential[Math.floor(Math.random()*potential.length)];
-    // De-dupe option text (a couple of JSAT words share the same English
-    // gloss, e.g. two words both meaning "work") so no two buttons ever show
-    // identical text.
-    const choices = [...new Set(q.options)].sort(() => Math.random() - 0.5);
-
+// Shared question renderer used by both the Vocabulary and Chumash Knowledge
+// quizzes. Builds buttons with createElement/textContent + addEventListener
+// (never inline onclick strings built from data) so nothing about the
+// question text or options can ever break the markup.
+function renderChoiceQuestion(displayText, options, onPick, { hebrew = false } = {}) {
     const quizArea = document.getElementById('quizArea');
     quizArea.innerHTML = '';
 
-    const wordDiv = document.createElement('div');
-    wordDiv.className = 'intake-hebrew-word';
-    wordDiv.textContent = q.display;
-    quizArea.appendChild(wordDiv);
+    const promptDiv = document.createElement('div');
+    promptDiv.className = hebrew ? 'intake-hebrew-word' : 'intake-question-text';
+    promptDiv.textContent = displayText;
+    quizArea.appendChild(promptDiv);
 
+    // De-dupe option text (a few facts/words legitimately share the same
+    // English answer) so no two buttons ever show identical text.
+    const choices = [...new Set(options)].sort(() => Math.random() - 0.5);
     const choicesDiv = document.createElement('div');
     choicesDiv.className = 'intake-choices';
     choices.forEach(o => {
         const btn = document.createElement('button');
         btn.className = 'intake-choice';
-        btn.textContent = o; // textContent, not innerHTML/inline onclick strings,
-        btn.addEventListener('click', () => window.ans(o, q));
+        btn.textContent = o;
+        btn.addEventListener('click', () => onPick(o));
         choicesDiv.appendChild(btn);
     });
     quizArea.appendChild(choicesDiv);
@@ -468,8 +478,18 @@ function runNext() {
     const skipBtn = document.createElement('button');
     skipBtn.className = 'intake-skip';
     skipBtn.innerHTML = "I'm not sure &rarr;";
-    skipBtn.addEventListener('click', () => window.ans(null, q));
+    skipBtn.addEventListener('click', () => onPick(null));
     quizArea.appendChild(skipBtn);
+}
+
+function runNext() {
+    state.questionCount++;
+    if (state.questionCount > TOTAL_QUESTIONS) return finishVocab();
+    document.getElementById('progressBar').style.width = ((state.questionCount-1)/TOTAL_QUESTIONS*100)+'%';
+    let potential = QUESTION_BANK.filter(q => q.rank === state.currentRank && !state.history.find(h => h.ri === q.ri));
+    if (potential.length === 0) potential = QUESTION_BANK.filter(q => !state.history.find(h => h.ri === q.ri));
+    const q = potential[Math.floor(Math.random()*potential.length)];
+    renderChoiceQuestion(q.display, q.options, (picked) => window.ans(picked, q), { hebrew: true });
 }
 
 window.ans = (picked, q) => {
@@ -523,6 +543,351 @@ function finishVocab() {
     })
     .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
 }
+
+// Official JSAT Level 8 Chumash Knowledge (Parsha) question bank (268 facts,
+// Bereishit through Devarim), reviewed by the teacher. `sefer` is the canonical
+// English tag used by the app to pull 5 random questions per sefer.
+const KNOWLEDGE_SEFARIM = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
+const KNOWLEDGE_PER_SEFER = 5;
+const KNOWLEDGE_BANK = [
+  { num: 1, sefer: 'Bereishit', question: "In how many days did השם create the world?", options: ['Three days', 'Six days', 'Seven days', 'Forty days'], correct: 'Six days' },
+  { num: 2, sefer: 'Bereishit', question: "On which day of creation did השם make the sun, moon, and stars?", options: ['Day 3', 'Day 2', 'Day 4', 'Day 5'], correct: 'Day 4' },
+  { num: 3, sefer: 'Bereishit', question: "השם rested on the seventh day. Which mitzvah do בני ישראל keep to testify to this?", options: ['ברית מילה', 'תפילין', 'כשרות', 'שבת'], correct: 'שבת' },
+  { num: 4, sefer: 'Bereishit', question: "From what was חוה created?", options: ['From a breath of השם', 'From the water', 'From the dust of the earth', 'From the rib of אדם'], correct: 'From the rib of אדם' },
+  { num: 5, sefer: 'Bereishit', question: "Who gave names to all the animals?", options: ['אדם', 'השם', 'חוה', 'נח'], correct: 'אדם' },
+  { num: 6, sefer: 'Bereishit', question: "Which tree were אדם and חוה commanded not to eat from?", options: ['The olive tree', 'עץ החיים (the Tree of Life)', 'The fig tree', 'עץ הדעת (the Tree of Knowledge)'], correct: 'עץ הדעת (the Tree of Knowledge)' },
+  { num: 7, sefer: 'Bereishit', question: "What happened in the story of קין and הבל?", options: ['הבל killed קין', 'קין killed הבל', 'They built an altar together in peace', 'They left their parents\' home together'], correct: 'קין killed הבל' },
+  { num: 8, sefer: 'Bereishit', question: "Which three sons of אדם and חוה are named in the Torah?", options: ['שת, הבל, קין', 'הבל, נח, שם', 'קין, ישמעאל, שת', 'שם, חם, יפת'], correct: 'שת, הבל, קין' },
+  { num: 9, sefer: 'Bereishit', question: "Who were the three sons of נח?", options: ['שת, הבל, קין', 'אברם, נחור, הרן', 'יצחק, ישמעאל, לוט', 'שם, חם, יפת'], correct: 'שם, חם, יפת' },
+  { num: 10, sefer: 'Bereishit', question: "According to this fact, what sin was the reason השם decided to bring the flood?", options: ['Speaking lashon hara', 'Theft (robbery)', 'Desecrating שבת', 'Idol worship'], correct: 'Theft (robbery)' },
+  { num: 11, sefer: 'Bereishit', question: "How many pairs of kosher animals were brought into the ark?", options: ['One pair', 'Seven pairs', 'Two pairs', 'Forty pairs'], correct: 'Seven pairs' },
+  { num: 12, sefer: 'Bereishit', question: "Why were extra (kosher) animals brought into the ark?", options: ['As a gift for נח\'s sons', 'To be brought as a sacrifice after the flood', 'So they could repopulate the earth faster', 'To be used for food during the flood'], correct: 'To be brought as a sacrifice after the flood' },
+  { num: 13, sefer: 'Bereishit', question: "How long did the rain of the flood fall?", options: ['A full year', 'Seven days and seven nights', 'Forty days and forty nights', 'One hundred and fifty days'], correct: 'Forty days and forty nights' },
+  { num: 14, sefer: 'Bereishit', question: "Which two birds did נח send out of the ark to check whether the waters had gone down?", options: ['A raven and a sparrow', 'Two doves', 'An eagle and a dove', 'A raven and a dove'], correct: 'A raven and a dove' },
+  { num: 15, sefer: 'Bereishit', question: "What did השם set as a sign that He would never again bring a flood to destroy the world?", options: ['The stars', 'The rainbow', 'שבת', 'ברית מילה'], correct: 'The rainbow' },
+  { num: 16, sefer: 'Bereishit', question: "How many mitzvot were given to בני נח (all of humanity)?", options: ['613', 'Three', 'Seven', 'Ten'], correct: 'Seven' },
+  { num: 17, sefer: 'Bereishit', question: "After נח became drunk from wine, which of his sons acted disrespectfully toward him?", options: ['יפת', 'עבר', 'שם', 'חם'], correct: 'חם' },
+  { num: 18, sefer: 'Bereishit', question: "What happened to the people who built the מגדל בבל (Tower of Bavel)?", options: ['The tower reached the heavens and they were rewarded', 'השם turned the builders into stone', 'השם brought a flood upon the tower', 'השם confused their language and scattered them across the earth'], correct: 'השם confused their language and scattered them across the earth' },
+  { num: 19, sefer: 'Bereishit', question: "Who was the father of אברם?", options: ['לוט', 'תרח', 'נחור', 'הרן'], correct: 'תרח' },
+  { num: 20, sefer: 'Bereishit', question: "What were the original names of אברהם and שרה?", options: ['אבירם and שרונה', 'נחור and מלכה', 'אברהם and הגר', 'אברם and שרי'], correct: 'אברם and שרי' },
+  { num: 21, sefer: 'Bereishit', question: "What was לוט's relationship to אברהם?", options: ['His father', 'His brother', 'His nephew', 'His son'], correct: 'His nephew' },
+  { num: 22, sefer: 'Bereishit', question: "When השם told אברם to leave his land, what did He say about where he should go?", options: ['He did not tell him specifically where to go', 'He told him to go to חברון', 'He told him to go to מצרים', 'He told him to go to הר סיני'], correct: 'He did not tell him specifically where to go' },
+  { num: 23, sefer: 'Bereishit', question: "What did השם promise אברם when He told him to leave his land?", options: ['That he would live forever', 'That he would become king of מצרים', 'That he would become a great nation, wealthy, and a source of blessing', 'That he would never have to travel again'], correct: 'That he would become a great nation, wealthy, and a source of blessing' },
+  { num: 24, sefer: 'Bereishit', question: "What did השם say about how He would treat people based on how they treated אברם?", options: ['He would make him invisible to his enemies', 'He would bless those who bless him and curse those who curse him', 'He would ignore everyone who opposed him', 'He would give him ten sons for every enemy'], correct: 'He would bless those who bless him and curse those who curse him' },
+  { num: 25, sefer: 'Bereishit', question: "Why did אברם leave the land of כנען and go down to מצרים?", options: ['To visit לוט', 'Because of a famine', 'Because of a war', 'Because השם commanded him to'], correct: 'Because of a famine' },
+  { num: 26, sefer: 'Bereishit', question: "Why did אברם ask שרי to say she was his sister when they went to מצרים?", options: ['So that she could become the queen of מצרים', 'Because she truly was his sister', 'So that he would be given gifts and allowed to live', 'So that פרעה would not recognize her'], correct: 'So that he would be given gifts and allowed to live' },
+  { num: 27, sefer: 'Bereishit', question: "What happened to פרעה after שרה was taken to his palace?", options: ['He immediately died', 'He was struck with a plague', 'He freed all of his slaves', 'He married her'], correct: 'He was struck with a plague' },
+  { num: 28, sefer: 'Bereishit', question: "Between whose shepherds did a quarrel break out?", options: ['The shepherds of לוט and the people of סדום', 'The shepherds of אברם and the shepherds of פרעה', 'The maidservants of שרה and הגר', 'The shepherds of אברם and the shepherds of לוט'], correct: 'The shepherds of אברם and the shepherds of לוט' },
+  { num: 29, sefer: 'Bereishit', question: "After separating from אברם, where did לוט choose to settle?", options: ['מצרים', 'חברון', 'סדום', 'חרן'], correct: 'סדום' },
+  { num: 30, sefer: 'Bereishit', question: "What were the people of סדום like?", options: ['They were righteous people', 'They were wicked people', 'They were great Torah scholars', 'They were peaceful farmers'], correct: 'They were wicked people' },
+  { num: 31, sefer: 'Bereishit', question: "To what two things did השם compare אברם's future descendants, saying they could not be counted?", options: ['The dust of the earth and the stars of the heavens', 'The sand of the sea and the trees of the forest', 'The days of the year and the drops of the rain', 'The fish of the sea and the birds of the sky'], correct: 'The dust of the earth and the stars of the heavens' },
+  { num: 32, sefer: 'Bereishit', question: "What happened to לוט during the war between the four kings and the five kings?", options: ['He fled to מצרים', 'He was killed in battle', 'He was crowned as a king', 'He was captured'], correct: 'He was captured' },
+  { num: 33, sefer: 'Bereishit', question: "What did אברם do when the king of סדום offered him the spoils of the war?", options: ['He took only the captured people', 'He took all of the spoils', 'He refused to take anything from him', 'He took half of the spoils'], correct: 'He refused to take anything from him' },
+  { num: 34, sefer: 'Bereishit', question: "What did השם promise אברם at the ברית בין הבתרים?", options: ['That he would live for four hundred years', 'That he would rule over מצרים', 'That his descendants would inherit the land of כנען', 'That he would have exactly twelve sons'], correct: 'That his descendants would inherit the land of כנען' },
+  { num: 35, sefer: 'Bereishit', question: "When אברם asked how he would know his children would inherit the land, what did השם foretell would happen to them first?", options: ['They would remain in כנען and never leave', 'They would be strangers in a land not their own and be afflicted for four hundred years', 'They would become the kings of מצרים', 'They would conquer the land within one year'], correct: 'They would be strangers in a land not their own and be afflicted for four hundred years' },
+  { num: 36, sefer: 'Bereishit', question: "Why did הגר, the maidservant of שרי, run away?", options: ['To go back to her family in מצרים', 'Because פרעה sent for her', 'To search for a husband', 'To escape the suffering she experienced from שרי'], correct: 'To escape the suffering she experienced from שרי' },
+  { num: 37, sefer: 'Bereishit', question: "What was the name of the son born to אברם from הגר?", options: ['יעקב', 'ישמעאל', 'יצחק', 'עשו'], correct: 'ישמעאל' },
+  { num: 38, sefer: 'Bereishit', question: "At what age did אברם receive his ברית מילה (at which time his name was changed to אברהם)?", options: ['Age 99', 'Age 100', 'Age 75', 'Age 90'], correct: 'Age 99' },
+  { num: 39, sefer: 'Bereishit', question: "Where was אברהם when השם appeared to him at the start of פרשת וירא?", options: ['On top of a mountain', 'Beside a well', 'In the land of מצרים', 'At the entrance of his tent'], correct: 'At the entrance of his tent' },
+  { num: 40, sefer: 'Bereishit', question: "How many angels (who looked like people) came to אברהם, and what did he do for them?", options: ['One angel; he argued with him', 'Three angels; he ran toward them and prepared a meal', 'Four angels; he sent them away', 'Two angels; he ignored them'], correct: 'Three angels; he ran toward them and prepared a meal' },
+  { num: 41, sefer: 'Bereishit', question: "How did שרה react when she heard the angels say she would have a child?", options: ['She began preparing a feast', 'She cried with joy', 'She ran to tell אברהם the news', 'She laughed, saying her husband was too old to have a child'], correct: 'She laughed, saying her husband was too old to have a child' },
+  { num: 42, sefer: 'Bereishit', question: "When השם asked אברהם why שרה laughed, how did He describe the reason she gave?", options: ['That שרה said she herself was too old to have a child', 'That שרה said her husband was too old to have a child', 'That שרה was afraid of the angels', 'That שרה did not believe in השם'], correct: 'That שרה said she herself was too old to have a child' },
+  { num: 43, sefer: 'Bereishit', question: "In his prayer to save the people of סדום, what was the smallest number of righteous people אברהם hoped to find there?", options: ['Ten', 'One hundred', 'Fifty', 'One'], correct: 'Ten' },
+  { num: 44, sefer: 'Bereishit', question: "What did the people of סדום do when they found out that לוט had guests in his home?", options: ['They fled the city in fear', 'They surrounded לוט\'s house', 'They brought the guests gifts', 'They welcomed the guests warmly'], correct: 'They surrounded לוט\'s house' },
+  { num: 45, sefer: 'Bereishit', question: "What happened to the wife of לוט as they fled סדום?", options: ['She turned back and returned to the city', 'She turned into a pillar of salt when she looked back', 'She led her family safely out', 'She was captured by the people of סדום'], correct: 'She turned into a pillar of salt when she looked back' },
+  { num: 46, sefer: 'Bereishit', question: "In פרשת וירא, which king tried to take שרה as his wife?", options: ['לבן', 'אבימלך', 'עפרון', 'פרעה'], correct: 'אבימלך' },
+  { num: 47, sefer: 'Bereishit', question: "How old were שרה and אברהם when their son was born?", options: ['שרה was 65 and אברהם was 75', 'שרה was 90 and אברהם was 100', 'שרה was 100 and אברהם was 127', 'שרה was 80 and אברהם was 90'], correct: 'שרה was 90 and אברהם was 100' },
+  { num: 48, sefer: 'Bereishit', question: "What was the name of the son born to אברהם and שרה?", options: ['יעקב', 'יצחק', 'ישמעאל', 'עשו'], correct: 'יצחק' },
+  { num: 49, sefer: 'Bereishit', question: "At what age did יצחק have his ברית מילה?", options: ['Thirteen years old', 'Three years old', 'Eight days old', 'Thirty days old'], correct: 'Eight days old' },
+  { num: 50, sefer: 'Bereishit', question: "Whom did שרה insist that אברהם send away from the household?", options: ['אליעזר and his men', 'לוט and his daughters', 'רבקה and לבן', 'הגר and ישמעאל'], correct: 'הגר and ישמעאל' },
+  { num: 51, sefer: 'Bereishit', question: "In עקדת יצחק, which son did Hashem command אברהם to bring as an offering?", options: ['יצחק', 'יוסף', 'יעקב', 'ישמעאל'], correct: 'יצחק' },
+  { num: 52, sefer: 'Bereishit', question: "At what age did שרה die?", options: ['127', '180', '137', '175'], correct: '127' },
+  { num: 53, sefer: 'Bereishit', question: "From whom did אברהם purchase מערת המכפלה, and for what price?", options: ['From אבימלך for 400 silver שקל', 'From עפרון for 400 silver שקל', 'From עפרון for 40 silver שקל', 'From לבן for 100 silver שקל'], correct: 'From עפרון for 400 silver שקל' },
+  { num: 54, sefer: 'Bereishit', question: "Whom did אברהם send to find a wife for יצחק?", options: ['His nephew לוט', 'His son ישמעאל', 'עפרון the חתי', 'His servant אליעזר'], correct: 'His servant אליעזר' },
+  { num: 55, sefer: 'Bereishit', question: "By what sign at the well did אליעזר recognize that רבקה was the right wife for יצחק?", options: ['She offered him bread and wine', 'She offered to draw water for him and his camels', 'She led him to her father\'s tent', 'She gave him a golden ring'], correct: 'She offered to draw water for him and his camels' },
+  { num: 56, sefer: 'Bereishit', question: "How was לבן related to רבקה?", options: ['He was her father', 'He was her cousin', 'He was her brother', 'He was her uncle'], correct: 'He was her brother' },
+  { num: 57, sefer: 'Bereishit', question: "What did רבקה do when she first saw יצחק approaching?", options: ['She offered him water from her jug', 'She ran to greet him and bowed', 'She hid inside the tent', 'She fell off her camel and covered her face'], correct: 'She fell off her camel and covered her face' },
+  { num: 58, sefer: 'Bereishit', question: "At what age did אברהם die?", options: ['127', '175', '180', '137'], correct: '175' },
+  { num: 59, sefer: 'Bereishit', question: "What did יצחק and רבקה do because they were childless?", options: ['They traveled to Egypt', 'They adopted אליעזר\'s son', 'They moved to פדן ארם', 'They prayed to Hashem for a child'], correct: 'They prayed to Hashem for a child' },
+  { num: 60, sefer: 'Bereishit', question: "Who were the twin sons born to יצחק and רבקה?", options: ['ישמעאל and יצחק', 'יעקב and עשו', 'ראובן and שמעון', 'יוסף and בנימין'], correct: 'יעקב and עשו' },
+  { num: 61, sefer: 'Bereishit', question: "How does the Torah describe the difference between עשו and יעקב as they grew up?", options: ['עשו was a farmer, and יעקב was a shepherd', 'Both were hunters who lived in the field', 'עשו was a shepherd, and יעקב was a hunter', 'עשו was a hunter, and יעקב was a dweller of tents (יושב אהלים)'], correct: 'עשו was a hunter, and יעקב was a dweller of tents (יושב אהלים)' },
+  { num: 62, sefer: 'Bereishit', question: "What did עשו sell to יעקב?", options: ['מערת המכפלה', 'The בכורה (rights of the firstborn)', 'His father\'s blessing', 'His flocks of sheep'], correct: 'The בכורה (rights of the firstborn)' },
+  { num: 63, sefer: 'Bereishit', question: "Why did יצחק go to אבימלך, and what happened to רבקה there?", options: ['He sought a wife, and אבימלך gave him רבקה', 'There was a war, and אבימלך blessed רבקה', 'There was a drought, and אבימלך returned שרה', 'There was a famine, and אבימלך took רבקה'], correct: 'There was a famine, and אבימלך took רבקה' },
+  { num: 64, sefer: 'Bereishit', question: "How did יעקב receive the blessings that יצחק intended for עשו?", options: ['He disguised himself as עשו with the help of רבקה', 'He bought them from עשו for a bowl of lentils', 'יצחק blessed him openly, knowing who he was', 'עשו willingly gave them to him'], correct: 'He disguised himself as עשו with the help of רבקה' },
+  { num: 65, sefer: 'Bereishit', question: "Why did יעקב leave for פדן ארם?", options: ['To buy grain during a famine', 'To visit his grandfather אברהם', 'To make peace with אבימלך', 'To escape עשו\'s anger and to find a wife'], correct: 'To escape עשו\'s anger and to find a wife' },
+  { num: 66, sefer: 'Bereishit', question: "What did יעקב see in his dream when he stopped to sleep on his journey?", options: ['Seven fat cows and seven thin cows', 'A burning bush that was not consumed', 'A ladder set on the ground reaching to heaven with angels going up and down', 'A well surrounded by shepherds'], correct: 'A ladder set on the ground reaching to heaven with angels going up and down' },
+  { num: 67, sefer: 'Bereishit', question: "Where did יעקב first meet רחל?", options: ['In her father לבן\'s tent', 'At the city gate of שכם', 'At a well where shepherds were gathered', 'In a field while hunting'], correct: 'At a well where shepherds were gathered' },
+  { num: 68, sefer: 'Bereishit', question: "How many total years did יעקב work in order to marry רחל?", options: ['Twenty-one years', 'Twenty years', 'Seven years', 'Fourteen years (seven, then seven more after being given לאה)'], correct: 'Fourteen years (seven, then seven more after being given לאה)' },
+  { num: 69, sefer: 'Bereishit', question: "Which maidservants did לבן give to his daughters לאה and רחל?", options: ['בלהה to לאה and זלפה to רחל', 'זלפה to both daughters', 'הגר to לאה and קטורה to רחל', 'זלפה to לאה and בלהה to רחל'], correct: 'זלפה to לאה and בלהה to רחל' },
+  { num: 70, sefer: 'Bereishit', question: "In addition to לאה and רחל, which two women did יעקב marry?", options: ['רבקה and לאה', 'בלהה and זלפה', 'הגר and קטורה', 'דינה and שרה'], correct: 'בלהה and זלפה' },
+  { num: 71, sefer: 'Bereishit', question: "Who was the mother of the שבט ראובן?", options: ['בלהה', 'רחל', 'לאה', 'זלפה'], correct: 'לאה' },
+  { num: 72, sefer: 'Bereishit', question: "What arrangement did יעקב make with לבן for his wages?", options: ['He would take the firstborn of each animal', 'He would take the white sheep only', 'He would take half of all the flocks', 'He would take the spotted and speckled sheep'], correct: 'He would take the spotted and speckled sheep' },
+  { num: 73, sefer: 'Bereishit', question: "What did לבן do when יעקב fled from his house?", options: ['He sent messengers of peace', 'He chased after him', 'He sent him gifts', 'He blessed him and let him go'], correct: 'He chased after him' },
+  { num: 74, sefer: 'Bereishit', question: "Why did רחל take her father's תרפים?", options: ['To sell them for money on the journey', 'To use them to find the way home', 'To give them to יעקב as a gift', 'To prevent her father from worshipping idols'], correct: 'To prevent her father from worshipping idols' },
+  { num: 75, sefer: 'Bereishit', question: "When יעקב sent מלאכים (messengers) to עשו, with how many men was עשו coming toward him?", options: ['100 men', '600 men', '300 men', '400 men'], correct: '400 men' },
+  { num: 76, sefer: 'Bereishit', question: "In what three ways did יעקב prepare for his meeting with עשו?", options: ['דורון (a gift), תפילה (prayer), and מלחמה (readiness for war)', 'תפילה, מנחה (an offering), and בריחה (fleeing)', 'תפילה, צום (fasting), and דורון', 'מלחמה, ברית (a covenant), and דורון'], correct: 'דורון (a gift), תפילה (prayer), and מלחמה (readiness for war)' },
+  { num: 77, sefer: 'Bereishit', question: "With whom did יעקב wrestle during the night before meeting עשו?", options: ['לבן', 'The angel (שר) of עשו', 'עשו himself', 'An angel of Hashem sent to bless him'], correct: 'The angel (שר) of עשו' },
+  { num: 78, sefer: 'Bereishit', question: "To what new name was יעקב changed?", options: ['אברהם', 'ישעיה', 'ישורון', 'ישראל'], correct: 'ישראל' },
+  { num: 79, sefer: 'Bereishit', question: "Why are בני ישראל forbidden to eat the גיד הנשה (sciatic nerve)?", options: ['Because עשו wounded יעקב there in battle', 'Because it was where לבן grabbed יעקב', 'Because the angel struck יעקב there during their struggle', 'Because it is where the ברית מילה is performed'], correct: 'Because the angel struck יעקב there during their struggle' },
+  { num: 80, sefer: 'Bereishit', question: "What did עשו do when he finally met יעקב?", options: ['He captured him', 'He ignored him', 'He fought with him', 'He kissed him'], correct: 'He kissed him' },
+  { num: 81, sefer: 'Bereishit', question: "Which two of יעקב's sons wiped out the city of שכם after דינה was taken?", options: ['לוי and יהודה', 'ראובן and יהודה', 'שמעון and לוי', 'יוסף and בנימין'], correct: 'שמעון and לוי' },
+  { num: 82, sefer: 'Bereishit', question: "רחל died while giving birth to which son?", options: ['יוסף', 'דן', 'בנימין', 'ראובן'], correct: 'בנימין' },
+  { num: 83, sefer: 'Bereishit', question: "At what age did יצחק die?", options: ['180', '127', '147', '175'], correct: '180' },
+  { num: 84, sefer: 'Bereishit', question: "Why did יעקב love יוסף more than his other sons?", options: ['Because he was the strongest', 'Because he was the firstborn', 'Because he was a בן זקונים (son of his old age)', 'Because he was the son of לאה'], correct: 'Because he was a בן זקונים (son of his old age)' },
+  { num: 85, sefer: 'Bereishit', question: "What special garment did יעקב make for יוסף?", options: ['A כתונת פסים (a striped/colorful coat)', 'A מעיל (a royal robe)', 'An אפוד (a priestly garment)', 'A טלית'], correct: 'A כתונת פסים (a striped/colorful coat)' },
+  { num: 86, sefer: 'Bereishit', question: "What were the two dreams of יוסף that angered his brothers?", options: ['Sheaves of grain bowing to his sheaf, and the sun, moon, and stars bowing to him', 'A basket of bread and a cup of wine', 'A ladder reaching to heaven and angels', 'Seven fat cows and seven thin cows'], correct: 'Sheaves of grain bowing to his sheaf, and the sun, moon, and stars bowing to him' },
+  { num: 87, sefer: 'Bereishit', question: "Who purchased יוסף in Egypt?", options: ['The שר המשקים', 'The ישמעאלים traders', 'פוטיפר, an officer of פרעה', 'פרעה himself'], correct: 'פוטיפר, an officer of פרעה' },
+  { num: 88, sefer: 'Bereishit', question: "What caused יוסף to be thrown into jail in Egypt?", options: ['The false accusation by the wife of פוטיפר', 'Fighting with the שר האופים', 'Interpreting פרעה\'s dream incorrectly', 'Stealing grain from פרעה\'s storehouse'], correct: 'The false accusation by the wife of פוטיפר' },
+  { num: 89, sefer: 'Bereishit', question: "Whose dreams did יוסף interpret while he was in jail?", options: ['His brothers ראובן and יהודה', 'The שר המשקים and פרעה', 'The שר המשקים (chief cupbearer) and the שר האופים (chief baker)', 'פרעה and פוטיפר'], correct: 'The שר המשקים (chief cupbearer) and the שר האופים (chief baker)' },
+  { num: 90, sefer: 'Bereishit', question: "What were the two dreams of פרעה that יוסף interpreted?", options: ['Sheaves of grain bowing, and stars bowing', 'Seven fat cows swallowed by seven thin cows, and seven full ears of grain swallowed by seven thin ears', 'A ladder reaching heaven, and angels ascending', 'A cup of wine, and three baskets of bread'], correct: 'Seven fat cows swallowed by seven thin cows, and seven full ears of grain swallowed by seven thin ears' },
+  { num: 91, sefer: 'Bereishit', question: "After interpreting פרעה's dreams, what position did יוסף receive in Egypt?", options: ['Head shepherd over פרעה\'s flocks', 'A prisoner in charge of the other inmates', 'Chief baker of the royal palace', 'Second-in-command, ruling directly under פרעה'], correct: 'Second-in-command, ruling directly under פרעה' },
+  { num: 92, sefer: 'Bereishit', question: "What were the names of the two sons born to יוסף in Egypt?", options: ['יהודה ולוי', 'גרשם ואליעזר', 'ראובן ושמעון', 'מנשה ואפרים'], correct: 'מנשה ואפרים' },
+  { num: 93, sefer: 'Bereishit', question: "When the brothers came down to Egypt during the famine, what did יוסף accuse them of being?", options: ['Idol worshippers', 'Thieves', 'Spies', 'Runaway slaves'], correct: 'Spies' },
+  { num: 94, sefer: 'Bereishit', question: "Which brother did יוסף hold captive in Egypt to make sure the others would return with בנימין?", options: ['שמעון', 'ראובן', 'יהודה', 'לוי'], correct: 'שמעון' },
+  { num: 95, sefer: 'Bereishit', question: "What did the brothers discover in their sacks on their way home from Egypt?", options: ['Their money', 'יוסף\'s silver goblet', 'Precious jewels', 'Extra sacks of grain'], correct: 'Their money' },
+  { num: 96, sefer: 'Bereishit', question: "Which brother finally convinced יעקב to send בנימין down to Egypt by promising to bring him back?", options: ['ראובן', 'יוסף', 'יהודה', 'שמעון'], correct: 'יהודה' },
+  { num: 97, sefer: 'Bereishit', question: "In whose sack did יוסף secretly place his goblet, leading to that brother being caught?", options: ['ראובן', 'בנימין', 'שמעון', 'יהודה'], correct: 'בנימין' },
+  { num: 98, sefer: 'Bereishit', question: "When בנימין was caught with the goblet, what did יהודה offer to do?", options: ['Stay in Egypt as a slave in place of בנימין', 'Pay a large ransom to free בנימין', 'Return home and bring יעקב to plead', 'Fight the Egyptian guards to rescue בנימין'], correct: 'Stay in Egypt as a slave in place of בנימין' },
+  { num: 99, sefer: 'Bereishit', question: "What words did יוסף say when he revealed his identity to his brothers?", options: ['"אני אחיכם אשר מכרתם" (I am your brother whom you sold)', '"אני יוסף, העוד אבי חי?" (I am Yosef, is my father still alive?)', '"לכו והגידו לאבי" (Go and tell my father)', '"שלום לכם, אל תיראו" (Peace to you, do not fear)'], correct: '"אני יוסף, העוד אבי חי?" (I am Yosef, is my father still alive?)' },
+  { num: 100, sefer: 'Bereishit', question: "How did יוסף arrange to bring יעקב down to Egypt?", options: ['He sent wagons (עגלות)', 'He sent an escort of horses', 'He traveled to כנען himself to carry him', 'He sent a fleet of boats on the Nile'], correct: 'He sent wagons (עגלות)' },
+  { num: 101, sefer: 'Bereishit', question: "How many members of יעקב's family/descendants went down to Egypt?", options: ['66', '147', '70', '12'], correct: '70' },
+  { num: 102, sefer: 'Bereishit', question: "In which region of Egypt did יוסף settle his family?", options: ['פיתום', 'רעמסס', 'גושן', 'מדין'], correct: 'גושן' },
+  { num: 103, sefer: 'Bereishit', question: "How many years did יעקב live in Egypt?", options: ['130 years', '40 years', '7 years', '17 years'], correct: '17 years' },
+  { num: 104, sefer: 'Bereishit', question: "Where did יעקב request to be buried?", options: ['In גושן in Egypt', 'In שכם where he first bought land', 'In מערת המכפלה in ארץ כנען', 'Beside the Nile River'], correct: 'In מערת המכפלה in ארץ כנען' },
+  { num: 105, sefer: 'Bereishit', question: "יעקב gave the blessing of \"המלאך הגואל\" (the angel who redeems from all evil) to which two people?", options: ['מנשה ואפרים, the sons of יוסף', 'All twelve of his sons together', 'יהודה ויוסף, his leading sons', 'ראובן ושמעון, his oldest sons'], correct: 'מנשה ואפרים, the sons of יוסף' },
+  { num: 106, sefer: 'Bereishit', question: "What unusual thing did יעקב do while blessing the two sons of יוסף?", options: ['He stood up and lifted them onto his lap', 'He crossed his hands, putting his right hand on the younger', 'He placed both hands only on מנשה the firstborn', 'He closed his eyes and blessed them from memory'], correct: 'He crossed his hands, putting his right hand on the younger' },
+  { num: 107, sefer: 'Bereishit', question: "What did יעקב do for his sons shortly before he died?", options: ['He divided his wealth equally among them', 'He blessed each of them', 'He sent them back to לבן in חרן', 'He appointed ראובן as leader of the family'], correct: 'He blessed each of them' },
+  { num: 108, sefer: 'Bereishit', question: "At what ages did יעקב and יוסף die?", options: ['יעקב at 130 and יוסף at 120', 'יעקב at 180 and יוסף at 100', 'יעקב at 147 and יוסף at 110', 'יעקב at 110 and יוסף at 147'], correct: 'יעקב at 147 and יוסף at 110' },
+  { num: 109, sefer: 'Shemot', question: "What happened to בני ישראל in Egypt in the years after יעקב's family arrived?", options: ['They remained a small, unchanging group', 'They were fruitful and multiplied greatly', 'They became Egyptian nobles and officials', 'They gradually returned to ארץ כנען'], correct: 'They were fruitful and multiplied greatly' },
+  { num: 110, sefer: 'Shemot', question: "Which two store-cities did בני ישראל build as slave labor for the new king?", options: ['גושן ומדין', 'פיתום ורעמסס', 'פיתום וגושן', 'רעמסס וסיני'], correct: 'פיתום ורעמסס' },
+  { num: 111, sefer: 'Shemot', question: "When פרעה ordered the midwives to kill the newborn Jewish boys, what did they do?", options: ['They reported it to משה', 'They fled from Egypt', 'They obeyed the order', 'They refused and let the babies live'], correct: 'They refused and let the babies live' },
+  { num: 112, sefer: 'Shemot', question: "After the midwives refused, what decree did פרעה give about the newborn Jewish boys?", options: ['Every newborn boy should be thrown into the Nile', 'Every newborn boy should be killed by the sword', 'Every newborn boy should be raised as an Egyptian', 'Every newborn boy should be sold as a slave'], correct: 'Every newborn boy should be thrown into the Nile' },
+  { num: 113, sefer: 'Shemot', question: "Why was baby משה placed in a basket in the Nile?", options: ['Because his family was moving to מדין', 'Because he could no longer be hidden', 'Because his mother had died', 'Because פרעה had found him'], correct: 'Because he could no longer be hidden' },
+  { num: 114, sefer: 'Shemot', question: "Who found baby משה in the Nile?", options: ['בת פרעה (the daughter of Pharaoh)', 'מרים, his sister', 'יוכבד, his mother', 'ציפורה'], correct: 'בת פרעה (the daughter of Pharaoh)' },
+  { num: 115, sefer: 'Shemot', question: "מרים arranged for whom to nurse the baby משה?", options: ['ציפורה', 'יוכבד, his own mother', 'בת פרעה', 'An Egyptian wet-nurse'], correct: 'יוכבד, his own mother' },
+  { num: 116, sefer: 'Shemot', question: "Why did בת פרעה give the baby the name משה?", options: ['Because he was a stranger in a foreign land', 'Because he would one day lead the people', 'Because he was found among the reeds', 'Because she drew him out of the water'], correct: 'Because she drew him out of the water' },
+  { num: 117, sefer: 'Shemot', question: "What did משה do when he went out and saw an Egyptian beating a Jew?", options: ['He ran away to מדין', 'He asked אהרן for help', 'He killed the Egyptian', 'He reported the Egyptian to פרעה'], correct: 'He killed the Egyptian' },
+  { num: 118, sefer: 'Shemot', question: "What happened the day after משה killed the Egyptian?", options: ['He found the daughters of יתרו at the well', 'He fled directly to מדין', 'פרעה summoned him to the palace', 'He saw two Jews fighting, and one asked if he would kill him too'], correct: 'He saw two Jews fighting, and one asked if he would kill him too' },
+  { num: 119, sefer: 'Shemot', question: "To which land did משה flee after פרעה learned he had killed an Egyptian?", options: ['כנען', 'מדין', 'מדבר סיני', 'גושן'], correct: 'מדין' },
+  { num: 120, sefer: 'Shemot', question: "Whom did משה help at the well in מדין when shepherds were harassing them?", options: ['The daughters of פרעה', 'The daughters of יתרו (רעואל)', 'The shepherds\' wives', 'The daughters of לבן'], correct: 'The daughters of יתרו (רעואל)' },
+  { num: 121, sefer: 'Shemot', question: "Whom did משה marry in מדין?", options: ['A daughter of פרעה', 'יוכבד', 'מרים', 'ציפורה, the daughter of יתרו'], correct: 'ציפורה, the daughter of יתרו' },
+  { num: 122, sefer: 'Shemot', question: "Why did משה name his son גרשם?", options: ['Because he was a stranger (גר) in a foreign land', 'Because God had helped him (עזר)', 'Because he was drawn from the water', 'Because he was born in מדין'], correct: 'Because he was a stranger (גר) in a foreign land' },
+  { num: 123, sefer: 'Shemot', question: "What amazing sight did משה see at the burning bush (הסנה)?", options: ['A bush that spoke in Egyptian', 'A bush that turned into a snake', 'A bush bearing fruit in the desert', 'A bush on fire that was not consumed'], correct: 'A bush on fire that was not consumed' },
+  { num: 124, sefer: 'Shemot', question: "Which of the following was NOT one of the three signs השם gave משה at the bush?", options: ['A stick turning into a snake', 'His hand becoming full of צרעת', 'A swarm of frogs covering the land', 'Water turning into blood'], correct: 'A swarm of frogs covering the land' },
+  { num: 125, sefer: 'Shemot', question: "On the way back to Egypt, משה was nearly killed by an angel. What action saved him?", options: ['אהרן came out to greet him', 'ציפורה circumcised their son (ברית מילה)', 'He turned his stick into a snake', 'He offered a sacrifice to השם'], correct: 'ציפורה circumcised their son (ברית מילה)' },
+  { num: 126, sefer: 'Shemot', question: "How did פרעה respond the first time משה told him to free the Jews?", options: ['He asked משה to show him a sign', 'He agreed but then changed his mind', 'He refused, saying he did not know who השם was', 'He offered to free only the men'], correct: 'He refused, saying he did not know who השם was' },
+  { num: 127, sefer: 'Shemot', question: "How did פרעה make the slaves' labor even harder after משה's request?", options: ['He doubled the number of bricks required', 'He stopped giving them straw but demanded the same number of bricks', 'He forced them to work through the night', 'He sent them to build a new city'], correct: 'He stopped giving them straw but demanded the same number of bricks' },
+  { num: 128, sefer: 'Shemot', question: "What happened to the Jewish officers when the required number of bricks was not produced?", options: ['They were beaten, and פרעה called the people lazy', 'They were promoted by פרעה', 'They were thrown into the Nile', 'They were freed from their labor'], correct: 'They were beaten, and פרעה called the people lazy' },
+  { num: 129, sefer: 'Shemot', question: "What did משה complain to השם after his first meeting with פרעה?", options: ['That things had only gotten worse and the nation had not been saved', 'That פרעה had threatened to kill him', 'That אהרן would not speak for him', 'That the people refused to follow him'], correct: 'That things had only gotten worse and the nation had not been saved' },
+  { num: 130, sefer: 'Shemot', question: "In פרשת וארא, how many \"expressions of redemption\" (לשונות של גאולה, e.g. והוצאתי, והצלתי) did השם use?", options: ['Four', 'Two', 'Ten', 'Three'], correct: 'Four' },
+  { num: 131, sefer: 'Shemot', question: "What reason did משה give השם for why he could not speak to פרעה?", options: ['He did not know the Egyptian language', 'He had a speech difficulty (ערל שפתיים / blocked lips)', 'He was afraid פרעה would kill him', 'He was too old to travel'], correct: 'He had a speech difficulty (ערל שפתיים / blocked lips)' },
+  { num: 132, sefer: 'Shemot', question: "Whom did השם appoint to be משה's spokesman/interpreter?", options: ['אהרן', 'יתרו', 'יהושע', 'מרים'], correct: 'אהרן' },
+  { num: 133, sefer: 'Shemot', question: "Why did בני ישראל not listen to משה's message of redemption?", options: ['Because they preferred to stay in Egypt', 'Because of their shortness of breath/spirit and hard labor (קוצר רוח ועבודה קשה)', 'Because they had never heard of משה', 'Because they did not believe in השם'], correct: 'Because of their shortness of breath/spirit and hard labor (קוצר רוח ועבודה קשה)' },
+  { num: 134, sefer: 'Shemot', question: "When פרעה's magicians imitated the sign of the stick turning into a snake, what happened?", options: ['Nothing happened, and פרעה freed the Jews', 'Their snakes turned back into ordinary sticks', 'Their snakes attacked פרעה', 'אהרן\'s staff/snake swallowed all of theirs'], correct: 'אהרן\'s staff/snake swallowed all of theirs' },
+  { num: 135, sefer: 'Shemot', question: "How old were משה and אהרן when they stood before פרעה?", options: ['משה was 83 and אהרן was 80', 'משה was 40 and אהרן was 43', 'משה was 70 and אהרן was 73', 'משה was 80 and אהרן was 83'], correct: 'משה was 80 and אהרן was 83' },
+  { num: 136, sefer: 'Shemot', question: "פרשת וארא describes the first seven plagues. Which set of plagues is covered in וארא?", options: ['From ארבה (locusts) through בכורות (firstborn)', 'From דם (blood) through ברד (hail)', 'From כינים (lice) through חושך (darkness)', 'From צפרדע (frogs) through דבר (pestilence)'], correct: 'From דם (blood) through ברד (hail)' },
+  { num: 137, sefer: 'Shemot', question: "Which final plagues are described in פרשת בא?", options: ['דם (blood), צפרדע (frogs), and כינים (lice)', 'ערוב (wild animals), דבר (pestilence), and שחין (boils)', 'ארבה (locusts), חושך (darkness), and מכת בכורות (death of the firstborn)', 'ברד (hail), דבר (pestilence), and שחין (boils)'], correct: 'ארבה (locusts), חושך (darkness), and מכת בכורות (death of the firstborn)' },
+  { num: 138, sefer: 'Shemot', question: "According to the Torah, which month is counted as the first month of the year?", options: ['אדר', 'תשרי', 'סיון', 'ניסן'], correct: 'ניסן' },
+  { num: 139, sefer: 'Shemot', question: "On which dates was the קרבן פסח slaughtered and then eaten?", options: ['Slaughtered on the 14th of ניסן, eaten on the night of the 15th', 'Slaughtered and eaten both on the 14th during the day', 'Slaughtered on the 15th, eaten on the night of the 16th', 'Slaughtered on the 10th, eaten on the night of the 14th'], correct: 'Slaughtered on the 14th of ניסן, eaten on the night of the 15th' },
+  { num: 140, sefer: 'Shemot', question: "Which of the following describes the animal used for the קרבן פסח?", options: ['A male sheep or goat, up to one year old, with no blemish', 'A male cow, up to two years old, with no blemish', 'A male sheep only, exactly one year old, even with a small blemish', 'A female sheep or goat, any age, with no blemish'], correct: 'A male sheep or goat, up to one year old, with no blemish' },
+  { num: 141, sefer: 'Shemot', question: "The קרבן פסח was commanded to be eaten together with which two foods?", options: ['מצה and מרור', 'דבש and חלב', 'מן and שלו', 'חלה and יין'], correct: 'מצה and מרור' },
+  { num: 142, sefer: 'Shemot', question: "How was the קרבן פסח required to be prepared?", options: ['Roasted over fire, never raw or cooked in water', 'Cooked (boiled) in water', 'Eaten raw', 'Baked into bread'], correct: 'Roasted over fire, never raw or cooked in water' },
+  { num: 143, sefer: 'Shemot', question: "In Egypt, what did בני ישראל place on their doorposts as a sign so their houses would be passed over?", options: ['Ashes from the fire', 'Olive oil', 'Water from the נילוס', 'The blood of the קרבן פסח'], correct: 'The blood of the קרבן פסח' },
+  { num: 144, sefer: 'Shemot', question: "What does the word פסח mean, and why was it given that name?", options: ['"Spring" — because it falls in the springtime', '"Redemption" — because the firstborn were redeemed', '"Freedom" — because the Jews were freed from slavery', '"Passed over" — because השם passed over the Jewish homes when killing the Egyptian firstborn'], correct: '"Passed over" — because השם passed over the Jewish homes when killing the Egyptian firstborn' },
+  { num: 145, sefer: 'Shemot', question: "What is the מצוה regarding eating מצה on פסח?", options: ['To eat מצה only on the last night of פסח', 'To eat מצה every day for eight days as an obligation', 'To eat מצה only during the daytime of the first day', 'To eat מצה on the first night, and מצה may be eaten throughout the seven days'], correct: 'To eat מצה on the first night, and מצה may be eaten throughout the seven days' },
+  { num: 146, sefer: 'Shemot', question: "Which food is forbidden to eat on פסח?", options: ['בשר (meat)', 'מצה (unleavened bread)', 'חמץ (leavened food)', 'מרור (bitter herbs)'], correct: 'חמץ (leavened food)' },
+  { num: 147, sefer: 'Shemot', question: "At exactly what time did מכת בכורות (the plague of the firstborn) take place?", options: ['At midnight (חצות הלילה)', 'At noon', 'At sunrise', 'At sunset'], correct: 'At midnight (חצות הלילה)' },
+  { num: 148, sefer: 'Shemot', question: "Approximately how many Jewish men left Egypt at the Exodus?", options: ['600,000', '6,000,000', '6,000', '60,000'], correct: '600,000' },
+  { num: 149, sefer: 'Shemot', question: "What name was given to the non-Jews who converted and joined בני ישראל as they left Egypt?", options: ['עמלק', 'בני נח', 'פלשתים', 'ערב רב'], correct: 'ערב רב' },
+  { num: 150, sefer: 'Shemot', question: "Why did the Jews bake their dough into מצה rather than bread when leaving Egypt?", options: ['They had run out of yeast in Egypt', 'The dough did not have time to rise and become חמץ', 'They wanted to save the flour for the desert', 'השם commanded them never to bake bread again'], correct: 'The dough did not have time to rise and become חמץ' },
+  { num: 151, sefer: 'Shemot', question: "Why must the firstborn of animals and people be redeemed?", options: ['Because they inherit a double portion', 'Because they are the strongest of the family', 'Because they were saved in Egypt during מכת בכורות', 'Because they lead the family in avodah'], correct: 'Because they were saved in Egypt during מכת בכורות' },
+  { num: 152, sefer: 'Shemot', question: "Why did השם lead the Jews out of Egypt on a roundabout path through the desert rather than the direct route?", options: ['Because the direct route had no water', 'To avoid leading them through the land of the פלשתים', 'Because עמלק was blocking the direct road', 'Because פרעה controlled the coastal road'], correct: 'To avoid leading them through the land of the פלשתים' },
+  { num: 153, sefer: 'Shemot', question: "Why did משה take the bones of יוסף out of Egypt?", options: ['Because יעקב had asked to be buried beside them', 'Because יוסף had made בני ישראל swear they would bring his bones with them', 'Because they were needed for the קרבן פסח', 'Because פרעה ordered him to remove them'], correct: 'Because יוסף had made בני ישראל swear they would bring his bones with them' },
+  { num: 154, sefer: 'Shemot', question: "How did השם guide בני ישראל in the desert by day and by night?", options: ['The שופר by day and thunder by night', 'עמוד ענן (a pillar of cloud) by day and עמוד אש (a pillar of fire) by night', 'A pillar of cloud both day and night', 'עמוד אש by day and עמוד ענן by night'], correct: 'עמוד ענן (a pillar of cloud) by day and עמוד אש (a pillar of fire) by night' },
+  { num: 155, sefer: 'Shemot', question: "Why did פרעה chase after בני ישראל into the desert?", options: ['He thought they were confused and lost as they wandered', 'He wanted to join them and leave Egypt', 'He was commanded by his advisors to convert them', 'He wanted to return יוסף\'s bones to Egypt'], correct: 'He thought they were confused and lost as they wandered' },
+  { num: 156, sefer: 'Shemot', question: "With how many chariots did פרעה chase after the Jews?", options: ['600 chariots', '6,000 chariots', '600,000 chariots', '60 chariots'], correct: '600 chariots' },
+  { num: 157, sefer: 'Shemot', question: "What did the frightened Jews complain to משה when they saw פרעה's army approaching?", options: ['"Give us water or we will stone you!"', '"Where is the מן you promised us?"', '"Was there a lack of graves in Egypt that you brought us to die in the desert?"', '"Why did you not leave us as slaves in Egypt?"'], correct: '"Was there a lack of graves in Egypt that you brought us to die in the desert?"' },
+  { num: 158, sefer: 'Shemot', question: "What happened when משה stretched out his hand holding his staff over the sea?", options: ['The sea immediately turned to blood', 'A pillar of fire descended into the water', 'The waters froze solid into ice', 'A strong wind came and split the sea'], correct: 'A strong wind came and split the sea' },
+  { num: 159, sefer: 'Shemot', question: "With which words did משה and the Jews begin the song of praise at the ים סוף?", options: ['"הללו את השם"', '"אז ישיר"', '"מי כמוך"', '"שמע ישראל"'], correct: '"אז ישיר"' },
+  { num: 160, sefer: 'Shemot', question: "Who led the women in שירה (song) at the ים סוף?", options: ['לאה', 'מרים', 'יוכבד', 'צפורה'], correct: 'מרים' },
+  { num: 161, sefer: 'Shemot', question: "In the story of מרה, for how long did בני ישראל travel in the desert without finding water?", options: ['One day', 'Three days', 'Seven days', 'Forty days'], correct: 'Three days' },
+  { num: 162, sefer: 'Shemot', question: "How did the falling of the מן work in connection with שבת?", options: ['The same amount fell every single day including שבת', 'A double portion fell on Friday and none fell on שבת', 'None fell on Friday and a double portion fell on שבת', 'A double portion fell on שבת and none on Friday'], correct: 'A double portion fell on Friday and none fell on שבת' },
+  { num: 163, sefer: 'Shemot', question: "What rule applied to the מן on a regular weekday?", options: ['It could only be gathered at night', 'It had to be shared with the ערב רב', 'A double portion had to be collected each morning', 'It could not be left over overnight for the next day'], correct: 'It could not be left over overnight for the next day' },
+  { num: 164, sefer: 'Shemot', question: "What happened when some people saved their מן overnight, making משה angry?", options: ['It disappeared entirely', 'It turned to stone', 'It became wormy and rotted', 'It doubled in amount'], correct: 'It became wormy and rotted' },
+  { num: 165, sefer: 'Shemot', question: "In פרשת בשלח, what did השם tell משה to do to the rock in order to produce water?", options: ['To lift the rock', 'To place his staff on the rock', 'To hit (strike) the rock', 'To speak to the rock'], correct: 'To hit (strike) the rock' },
+  { num: 166, sefer: 'Shemot', question: "Which nation attacked בני ישראל in the desert at the end of פרשת בשלח?", options: ['פלשתים', 'מדין', 'אדום', 'עמלק'], correct: 'עמלק' },
+  { num: 167, sefer: 'Shemot', question: "יתרו came to greet משה, bringing along which family members?", options: ['משה\'s brother אהרן and sister מרים', 'משה\'s wife and his one daughter', 'משה\'s wife and his two sons, גרשם and אליעזר', 'משה\'s father עמרם and mother יוכבד'], correct: 'משה\'s wife and his two sons, גרשם and אליעזר' },
+  { num: 168, sefer: 'Shemot', question: "What advice did יתרו give משה after seeing him judge the people alone all day?", options: ['To have אהרן do all the judging instead', 'To only judge on שבת', 'To delegate parts of the judging to other appointed judges', 'To stop judging the people entirely'], correct: 'To delegate parts of the judging to other appointed judges' },
+  { num: 169, sefer: 'Shemot', question: "During which month did מתן תורה (the giving of the Torah) take place?", options: ['תשרי, the seventh month', 'אדר, the twelfth month', 'סיון, the third month', 'ניסן, the first month'], correct: 'סיון, the third month' },
+  { num: 170, sefer: 'Shemot', question: "At which location did מתן תורה take place?", options: ['הר המוריה', 'הר הזיתים', 'הר נבו', 'הר סיני'], correct: 'הר סיני' },
+  { num: 171, sefer: 'Shemot', question: "How many days of preparation (ימי הגבלה) did בני ישראל have before מתן תורה?", options: ['Three days', 'Ten days', 'Forty days', 'Seven days'], correct: 'Three days' },
+  { num: 172, sefer: 'Shemot', question: "What sounds and sights accompanied מתן תורה at הר סיני?", options: ['Rain and a rainbow', 'Complete silence and total darkness', 'The sound of a חצוצרה and a rushing river', 'The sound of a שופר, along with thunder and lightning'], correct: 'The sound of a שופר, along with thunder and lightning' },
+  { num: 173, sefer: 'Shemot', question: "How many commandments (הדברות) did השם give בני ישראל at הר סיני?", options: ['Ten (עשרת הדברות)', 'Thirteen', 'Seven', 'Five'], correct: 'Ten (עשרת הדברות)' },
+  { num: 174, sefer: 'Shemot', question: "Which of the following is one of the עשרת הדברות (Ten Commandments)?", options: ['"ושמרתם את השבת" as commanded through בין הביכורים', '"כבד את אביך ואת אמך" (Honor your father and mother)', '"ואהבת לרעך כמוך" (Love your neighbor as yourself)', '"והלכת בדרכיו" (Walk in His ways)'], correct: '"כבד את אביך ואת אמך" (Honor your father and mother)' },
+  { num: 175, sefer: 'Shemot', question: "Why did the Jews ask משה to speak to השם on their behalf and relay His words to them?", options: ['They could not understand the לשון הקודש', 'They were too far from הר סיני to hear', 'They were afraid they would die if השם spoke to them directly', 'They wanted משה to become their king'], correct: 'They were afraid they would die if השם spoke to them directly' },
+  { num: 176, sefer: 'Shemot', question: "A person who kills by accident flees to an עיר מקלט. Until when must he remain there?", options: ['Until he pays a fine to the family', 'For exactly seven years', 'Until the death of the כהן גדול', 'Until the next שמיטה year'], correct: 'Until the death of the כהן גדול' },
+  { num: 177, sefer: 'Shemot', question: "What does the מצוה of \"מדבר שקר תרחק\" teach?", options: ['To distance yourself from falsehood — do not tell a lie', 'To avoid eating forbidden foods', 'To keep away from an enemy', 'To stay far from idol worship'], correct: 'To distance yourself from falsehood — do not tell a lie' },
+  { num: 178, sefer: 'Shemot', question: "What does the Torah command regarding your enemy's struggling donkey?", options: ['You must ignore it since he is your enemy', 'You may take the donkey as your own', 'There is a מצוה to help him unload the donkey struggling under its burden', 'You must report him to the judges'], correct: 'There is a מצוה to help him unload the donkey struggling under its burden' },
+  { num: 179, sefer: 'Shemot', question: "How often does שמיטה occur, and what must be done during it?", options: ['Every third year, when a tenth of the crops is given away', 'Every year, when the first fruits are brought to the בית המקדש', 'Every fiftieth year, when slaves go free', 'Every seventh year, when fields must be left fallow (not planted)'], correct: 'Every seventh year, when fields must be left fallow (not planted)' },
+  { num: 180, sefer: 'Shemot', question: "What are ביכורים, and where are they brought?", options: ['A tenth of the crops, given to the לוי', 'The firstborn animals, brought to the כהן גדול', 'The first fruits of the שבעת המינים, brought to the בית המקדש', 'The first portion of dough, given to the כהן'], correct: 'The first fruits of the שבעת המינים, brought to the בית המקדש' },
+  { num: 181, sefer: 'Shemot', question: "The mitzvah of בשר בחלב teaches that a Jew may not do what?", options: ['Cook or eat meat and milk together', 'Eat fish that lack fins and scales', 'Eat the blood of an animal', 'Eat bread during פסח'], correct: 'Cook or eat meat and milk together' },
+  { num: 182, sefer: 'Shemot', question: "Which three festivals are the שלש רגלים (three pilgrimage festivals)?", options: ['פסח, סוכות, חנוכה', 'פסח, שבועות, סוכות', 'פסח, ראש השנה, יום כיפור', 'שבועות, ראש השנה, סוכות'], correct: 'פסח, שבועות, סוכות' },
+  { num: 183, sefer: 'Shemot', question: "What is a Jew supposed to do on each of the three רגלים (עולה רגל)?", options: ['Bring a קרבן תודה for being saved from danger', 'Go up to the בית המקדש', 'Count the Jewish people with a מחצית השקל', 'Fast for the entire day'], correct: 'Go up to the בית המקדש' },
+  { num: 184, sefer: 'Shemot', question: "After בני ישראל heard the עשרת הדברות, how long did משה spend on הר סיני?", options: ['40 days and 40 nights', '7 days and 7 nights', '50 days and 50 nights', '3 days and 3 nights'], correct: '40 days and 40 nights' },
+  { num: 185, sefer: 'Shemot', question: "What famous words did בני ישראל declare at הר סיני to show they would accept the Torah?", options: ['הנני', 'שמע ישראל', 'נעשה ונשמע', 'מי כמוכה'], correct: 'נעשה ונשמע' },
+  { num: 186, sefer: 'Shemot', question: "Which of the following is not one of the כלים (vessels) of the משכן described in פרשת תרומה?", options: ['The מנורה', 'The שלחן', 'The מחצית השקל', 'The מזבח'], correct: 'The שלחן' },
+  { num: 187, sefer: 'Shemot', question: "What was placed on the שלחן (table) in the משכן?", options: ['The שמן זית for the מנורה', 'The ארון with the לוחות', 'The קטורת (incense)', 'The לחם הפנים (showbread)'], correct: 'The לחם הפנים (showbread)' },
+  { num: 188, sefer: 'Shemot', question: "Where in the משכן was the ארון placed?", options: ['On the מזבח הזהב', 'Outside the camp', 'In the קדש הקדשים', 'Next to the מנורה in the היכל'], correct: 'In the קדש הקדשים' },
+  { num: 189, sefer: 'Shemot', question: "How many special garments did the כהן גדול wear?", options: ['4 garments', '8 garments', '13 garments', '3 garments'], correct: '8 garments' },
+  { num: 190, sefer: 'Shemot', question: "How many garments did an ordinary כהן (כהן הדיוט) wear, compared to the כהן גדול?", options: ['4 garments', '2 garments', '6 garment', '8 garments (the same as the כהן גדול)'], correct: '4 garments' },
+  { num: 191, sefer: 'Shemot', question: "The כהנים are descendants of which person?", options: ['יהודה', 'משה', 'אהרן', 'לוי'], correct: 'אהרן' },
+  { num: 192, sefer: 'Shemot', question: "What kind of oil was required for lighting the מנורה?", options: ['Oil from the מחצית השקל collection', 'שמן זית זך (pure olive oil)', 'Oil mixed with קטורת', 'Any vegetable oil'], correct: 'שמן זית זך (pure olive oil)' },
+  { num: 193, sefer: 'Shemot', question: "The אורים ותומים were placed inside which garment of the כהן גדול and were used for what purpose?", options: ['The חושן (breastplate), used to answer questions for בני ישראל', 'The מעיל (robe), used to make music', 'The מצנפת (turban), used to atone for sin', 'The אפוד, used to hold the קטורת'], correct: 'The חושן (breastplate), used to answer questions for בני ישראל' },
+  { num: 194, sefer: 'Shemot', question: "What was offered on the מזבח הזהב (golden altar) inside the משכן?", options: ['The מחצית השקל', 'The קטורת (incense)', 'The לחם הפנים', 'Animal קרבנות'], correct: 'The קטורת (incense)' },
+  { num: 195, sefer: 'Shemot', question: "How were the Jewish people counted, rather than counting them directly?", options: ['Each person brought a קרבן תודה', 'Each person gave a מחצית השקל (half-shekel)', 'Each person gave שמן זית for the מנורה', 'Each tribe sent one representative'], correct: 'Each person gave a מחצית השקל (half-shekel)' },
+  { num: 196, sefer: 'Shemot', question: "What did משה do when he came down and saw בני ישראל worshipping the עגל (golden calf)?", options: ['He remained silent', 'He entered the קדש הקדשים', 'He counted the people with a מחצית השקל', 'He broke the לוחות'], correct: 'He broke the לוחות' },
+  { num: 197, sefer: 'Shemot', question: "How many מידות של רחמים (attributes of mercy) did השם teach משה?", options: ['13', '7', '40', '10'], correct: '13' },
+  { num: 198, sefer: 'Vayikra', question: "At the beginning of ספר ויקרא, from where did השם speak to משה?", options: ['From הר סיני', 'From the אוהל מועד', 'From the burning bush', 'From the קדש הקדשים on יום כיפור'], correct: 'From the אוהל מועד' },
+  { num: 199, sefer: 'Vayikra', question: "What was the משכן used for?", options: ['It was the place where the קרבנות were brought', 'It was where the poor collected פאה', 'It was where לשון הרע was judged', 'It was where the Jews were counted'], correct: 'It was the place where the קרבנות were brought' },
+  { num: 200, sefer: 'Vayikra', question: "In what situation would a person bring a קרבן תודה?", options: ['To be counted among בני ישראל', 'To atone for eating blood', 'To be purified from צרעת', 'To give thanks after being saved from danger'], correct: 'To give thanks after being saved from danger' },
+  { num: 201, sefer: 'Vayikra', question: "Which of the following does the Torah in פרשת צו forbid eating?", options: ['Blood', 'The לחם הפנים', 'Fish with fins and scales', 'Bread on שבועות'], correct: 'Blood' },
+  { num: 202, sefer: 'Vayikra', question: "What happened to נדב and אביהוא, the sons of אהרן, on the day the משכן was established?", options: ['They were sent to live outside the camp', 'They died after bringing קטורת without permission', 'They became כהן גדול', 'They broke the לוחות'], correct: 'They died after bringing קטורת without permission' },
+  { num: 203, sefer: 'Vayikra', question: "How did אהרן react when he heard that his two sons had died?", options: ['He cried out loudly', 'He responded with silence', 'He broke the לוחות', 'He left the camp'], correct: 'He responded with silence' },
+  { num: 204, sefer: 'Vayikra', question: "According to פרשת שמיני, which two signs make a land animal a kosher species?", options: ['Wings and feathers', 'Split hooves and fins', 'Fins and scales', 'Split hooves and chewing its cud'], correct: 'Split hooves and chewing its cud' },
+  { num: 205, sefer: 'Vayikra', question: "Who alone had the authority to diagnose צרעת (whether on a person, clothing, or a house)?", options: ['Any doctor', 'A כהן', 'A לוי', 'משה'], correct: 'A כהן' },
+  { num: 206, sefer: 'Vayikra', question: "Where did a מצורע (person with צרעת) have to live?", options: ['In the קדש הקדשים', 'Outside the camp', 'Inside the משכן', 'In the home of a כהן'], correct: 'Outside the camp' },
+  { num: 207, sefer: 'Vayikra', question: "צרעת is associated with which sin?", options: ['לשון הרע (evil speech)', 'Worshipping the עגל', 'Eating blood', 'Wearing שעטנז'], correct: 'לשון הרע (evil speech)' },
+  { num: 208, sefer: 'Vayikra', question: "On which day of the year did the כהן גדול enter the קדש הקדשים?", options: ['יום כיפור', 'פסח', 'ראש חודש', 'The three רגלים'], correct: 'יום כיפור' },
+  { num: 209, sefer: 'Vayikra', question: "What kind of clothing did the כהן גדול wear when serving in the קדש הקדשים on יום כיפור?", options: ['White clothing', 'The אורים ותומים only', 'His usual eight gold garments', 'The clothing of a כהן הדיוט'], correct: 'White clothing' },
+  { num: 210, sefer: 'Vayikra', question: "What did the כהן גדול burn in the קדש הקדשים on יום כיפור?", options: ['קטורת (incense)', 'The לחם הפנים', 'שמן זית זך', 'A קרבן תודה'], correct: 'קטורת (incense)' },
+  { num: 211, sefer: 'Vayikra', question: "According to פרשת קדושים, why must בני ישראל be holy?", options: ['Because השם is holy', 'Because they left מצרים', 'Because they live near the משכן', 'Because they received the לוחות'], correct: 'Because השם is holy' },
+  { num: 212, sefer: 'Vayikra', question: "The mitzvah of מורא (fearing one's parents) includes which of the following?", options: ['Giving a parent food and drink', 'Standing up before anyone who is old', 'Not taking revenge against a parent', 'Not sitting in a parent\'s place or contradicting them'], correct: 'Not sitting in a parent\'s place or contradicting them' },
+  { num: 213, sefer: 'Vayikra', question: "What is the mitzvah of פאה?", options: ['Not eating fruit from a tree\'s first three years', 'Keeping accurate weights', 'Not wearing wool and linen together', 'Leaving a corner of the field for the poor to collect'], correct: 'Leaving a corner of the field for the poor to collect' },
+  { num: 214, sefer: 'Vayikra', question: "The mitzvah of שעטנז forbids wearing which two materials together?", options: ['Wool and linen', 'Cotton and silk', 'Leather and wool', 'Gold and linen'], correct: 'Wool and linen' },
+  { num: 215, sefer: 'Vayikra', question: "The mitzvah of ערלה forbids eating what?", options: ['The blood of an animal', 'Meat and milk cooked together', 'The corner of the field left for the poor', 'The fruit of a tree during its first three years'], correct: 'The fruit of a tree during its first three years' },
+  { num: 216, sefer: 'Vayikra', question: "The mitzvah of לא תקלל חרש teaches that it is forbidden to curse whom?", options: ['Even your own parents', 'Even a blind person', 'Even someone who is old', 'Even a deaf person (who cannot hear the curse)'], correct: 'Even a deaf person (who cannot hear the curse)' },
+  { num: 217, sefer: 'Vayikra', question: "What does the mitzvah of לפני עור לא תתן מכשול teach beyond its literal meaning?", options: ['Do not stand idly by when someone is in danger', 'Do not curse a deaf person', 'Do not take revenge or hold a grudge', 'Do not give someone bad advice'], correct: 'Do not give someone bad advice' },
+  { num: 218, sefer: 'Vayikra', question: "The mitzvah of לא תלך רכיל forbids what behavior?", options: ['Cursing a deaf person', 'Speaking לשון הרע (gossip/tale-bearing)', 'Hating your brother in your heart', 'Taking revenge'], correct: 'Speaking לשון הרע (gossip/tale-bearing)' },
+  { num: 219, sefer: 'Vayikra', question: "What does the mitzvah of לא תעמוד על דם רעך require of a person?", options: ['Do not place a stumbling block before the blind', 'Do not hate your brother in your heart', 'Do not hold a grudge against your neighbor', 'Do not stand by idly when you can help someone in danger'], correct: 'Do not stand by idly when you can help someone in danger' },
+  { num: 220, sefer: 'Vayikra', question: "The mitzvah of לא תשנא את אחיך בלבבך forbids what?", options: ['Taking revenge against your neighbor', 'Speaking gossip about your neighbor', 'Hating your fellow Jew in your heart', 'Standing idly by when someone is in danger'], correct: 'Hating your fellow Jew in your heart' },
+  { num: 221, sefer: 'Vayikra', question: "The mitzvot of לא תקום ולא תטור forbid which behavior (for example, refusing to lend a tool because a person once refused you)?", options: ['Speaking לשון הרע', 'Hating your brother in your heart', 'Placing a stumbling block before the blind', 'Taking revenge or holding a grudge'], correct: 'Taking revenge or holding a grudge' },
+  { num: 222, sefer: 'Vayikra', question: "The mitzvah of והדרת פני זקן teaches us to honor whom, for example by standing up before them?", options: ['A כהן', 'One\'s own parents', 'Someone who is old', 'A poor person'], correct: 'Someone who is old' },
+  { num: 223, sefer: 'Vayikra', question: "Which mitzvah in פרשת קדושים deals with honesty in business?", options: ['Not eating ערלה fruit', 'Not wearing שעטנז', 'Leaving פאה for the poor', 'Maintaining accurate weights and measures'], correct: 'Maintaining accurate weights and measures' },
+  { num: 224, sefer: 'Vayikra', question: "For which relative is a כהן permitted to become טמא (ritually impure)?", options: ['His nephew', 'His uncle', 'His grandfather', 'His unmarried sister'], correct: 'His unmarried sister' },
+  { num: 225, sefer: 'Vayikra', question: "פרשת אמור is well known for listing which of the following?", options: ['The dates of all the festivals and their מצוות', 'The relatives for whom a כהן may become טמא', 'The י"ג מידות של רחמים', 'The vessels of the משכן'], correct: 'The dates of all the festivals and their מצוות' },
+  { num: 226, sefer: 'Vayikra', question: "During the שמיטה (Sabbatical) year, what does the Torah command regarding the land?", options: ['Not to work the field, and whatever grows becomes ownerless and may be taken by anyone', 'To work the field twice as hard to store up extra food', 'To give one tenth of all produce to the כהנים', 'To let only the poor work the fields that year'], correct: 'Not to work the field, and whatever grows becomes ownerless and may be taken by anyone' },
+  { num: 227, sefer: 'Vayikra', question: "The יובל (Jubilee) year comes after seven שמיטה cycles. Which year is the יובל, and what happens then?", options: ['The 7th year, when slaves go free but fields return to the king', 'The 50th year, when all fields return to their original owners and the land may not be worked', 'The 49th year, when all debts are cancelled but fields are still worked', 'The 100th year, when the land is redistributed by lottery'], correct: 'The 50th year, when all fields return to their original owners and the land may not be worked' },
+  { num: 228, sefer: 'Vayikra', question: "פרשת בהר teaches a prohibition about lending money to a fellow Jew. What is forbidden?", options: ['Lending money to a poor person at all', 'Charging interest on a loan', 'Requiring any object as security for a loan', 'Asking for the loan to be repaid within a year'], correct: 'Charging interest on a loan' },
+  { num: 229, sefer: 'Bamidbar', question: "In the census at the start of ספר במדבר, from what age were the Jewish men counted?", options: ['From one month old and above', 'From twenty years old and above', 'From thirty years old and above', 'From thirteen years old and above'], correct: 'From twenty years old and above' },
+  { num: 230, sefer: 'Bamidbar', question: "The tribe of לוי was counted separately from the other tribes. From what age were the לויים counted?", options: ['From one month old and older', 'From twenty years old and older', 'From thirty years old and older', 'From thirteen years old and older'], correct: 'From one month old and older' },
+  { num: 231, sefer: 'Bamidbar', question: "Approximately how many Jewish men (ages 20-60) were counted in the census?", options: ['About 12,000', 'About 600,000', 'About 60,000', 'About 6,000,000'], correct: 'About 600,000' },
+  { num: 232, sefer: 'Bamidbar', question: "The לויים were chosen for special service in place of which group?", options: ['The כהנים (priests)', 'The tribe of ראובן', 'The בכורים (firstborn)', 'The זקנים (elders)'], correct: 'The בכורים (firstborn)' },
+  { num: 233, sefer: 'Bamidbar', question: "What was the special job of the לויים in the desert?", options: ['To judge disputes among the people', 'To transport the משכן (Tabernacle)', 'To collect the מן each morning', 'To lead the Jewish army into battle'], correct: 'To transport the משכן (Tabernacle)' },
+  { num: 234, sefer: 'Bamidbar', question: "Which of the following is a נזיר forbidden to do?", options: ['Eat meat, wear leather shoes, or work on Shabbat', 'Own property, marry, or offer קרבנות', 'Speak to women, leave his home, or eat bread', 'Drink wine, cut his hair, or become טמא to a dead person'], correct: 'Drink wine, cut his hair, or become טמא to a dead person' },
+  { num: 235, sefer: 'Bamidbar', question: "פרשת נשא contains ברכת כהנים. Who is commanded to recite this blessing over the Jewish people?", options: ['The king', 'The זקנים (elders)', 'The לויים', 'The כהנים'], correct: 'The כהנים' },
+  { num: 236, sefer: 'Bamidbar', question: "פסח שני was given for someone who was טמא or too far to bring the קרבן פסח in ניסן. On what date is פסח שני brought?", options: ['The 14th of ניסן', 'The 15th of אייר', 'The 14th of אייר', 'The 10th of ניסן'], correct: 'The 14th of אייר' },
+  { num: 237, sefer: 'Bamidbar', question: "How many זקנים (elders) were appointed to help משה lead the people?", options: ['Fifty', 'Twelve', 'Two hundred fifty', 'Seventy'], correct: 'Seventy' },
+  { num: 238, sefer: 'Bamidbar', question: "When בני ישראל complained that they wanted meat, what food did Hashem send them?", options: ['Manna (מן)', 'Fish from the sea', 'Cattle from the desert', 'Quail (שליו)'], correct: 'Quail (שליו)' },
+  { num: 239, sefer: 'Bamidbar', question: "מרים spoke לשון הרע against משה. How was she punished?", options: ['She was struck with צרעת (leprosy)', 'She lost her role as a prophetess', 'She was not allowed to enter ארץ ישראל', 'She was swallowed by the earth'], correct: 'She was struck with צרעת (leprosy)' },
+  { num: 240, sefer: 'Bamidbar', question: "פרשת שלח tells the story of the מרגלים. Who were the מרגלים?", options: ['The spies sent to scout out the land of Israel', 'The leaders who rebelled against משה', 'The elders appointed to judge the people', 'The men counted in the census'], correct: 'The spies sent to scout out the land of Israel' },
+  { num: 241, sefer: 'Bamidbar', question: "As a result of the sin of the מרגלים, what punishment did the Jews receive?", options: ['To wander in the desert for forty years until all those over twenty died out', 'To be struck with a plague that killed half the nation', 'To lose the מן for one full year', 'To wander in the desert for seven years until the land was conquered'], correct: 'To wander in the desert for forty years until all those over twenty died out' },
+  { num: 242, sefer: 'Bamidbar', question: "The מצוה of חלה, taught in פרשת שלח, involves which of the following?", options: ['Placing fringes on the corners of a four-cornered garment', 'Separating a portion of dough and giving it to the כהן', 'Redeeming a firstborn son with silver coins', 'Bringing the first fruits to the בית המקדש'], correct: 'Separating a portion of dough and giving it to the כהן' },
+  { num: 243, sefer: 'Bamidbar', question: "The מצוה of ציצית commands us to do what?", options: ['Bind boxes containing Torah verses on the arm and head', 'Separate a portion of dough for the כהן', 'Affix a scroll to the doorpost of the house', 'Place fringes on the corners of a four-cornered garment'], correct: 'Place fringes on the corners of a four-cornered garment' },
+  { num: 244, sefer: 'Bamidbar', question: "In the story of קרח, קרח and his followers rebelled against משה and אהרן. How were the rebels ultimately punished?", options: ['The earth opened and swallowed them', 'They were forced to wander for forty years', 'They drowned in the ים סוף', 'They were struck with צרעת'], correct: 'The earth opened and swallowed them' },
+  { num: 245, sefer: 'Bamidbar', question: "What miracle happened with אהרן's stick to prove he was chosen for the כהונה?", options: ['It glowed with fire', 'It blossomed and produced almonds', 'It turned into a snake', 'It brought water out of a rock'], correct: 'It blossomed and produced almonds' },
+  { num: 246, sefer: 'Bamidbar', question: "For how much is a firstborn son redeemed (פדיון הבן), and at what age?", options: ['Fifty silver שקל, at one year old', 'Ten silver שקל, at forty days old', 'Five silver שקל, at one month old', 'Five silver שקל, at eight days old'], correct: 'Five silver שקל, at one month old' },
+  { num: 247, sefer: 'Bamidbar', question: "The מצוה of פרה אדומה (the red heifer) was used for what purpose?", options: ['To atone for the sin of the golden calf', 'To purify a person who became טמא through contact with a dead body', 'To redeem a firstborn son', 'To bless the crops of the new year'], correct: 'To purify a person who became טמא through contact with a dead body' },
+  { num: 248, sefer: 'Bamidbar', question: "What is a חוק?", options: ['A מצוה whose reason is unknown to us', 'A מצוה that applies only in the land of Israel', 'A punishment given by the בית דין', 'A blessing recited before doing a מצוה'], correct: 'A מצוה whose reason is unknown to us' },
+  { num: 249, sefer: 'Bamidbar', question: "What happened to the water supply when מרים died?", options: ['The well split into twelve streams', 'A great flood swept through the camp', 'The water turned bitter and undrinkable', 'There was no water for בני ישראל to drink'], correct: 'There was no water for בני ישראל to drink' },
+  { num: 250, sefer: 'Bamidbar', question: "משה was told to speak to the rock to bring forth water, but instead he hit it. What was his punishment?", options: ['He was struck with צרעת like מרים', 'He had to wander an extra forty years', 'He lost his role as leader immediately', 'He and אהרן would not enter the land of Israel'], correct: 'He and אהרן would not enter the land of Israel' },
+  { num: 251, sefer: 'Bamidbar', question: "Where did אהרן die?", options: ['At הר ההר', 'At הר סיני', 'At הר נבו', 'At הר גריזים'], correct: 'At הר ההר' },
+  { num: 252, sefer: 'Bamidbar', question: "Which nation refused to let בני ישראל pass through their land on the way to Israel?", options: ['מדין', 'אדום', 'מואב', 'עמלק'], correct: 'אדום' },
+  { num: 253, sefer: 'Bamidbar', question: "In the story of בלק and בלעם, why did בלק, king of מואב, hire בלעם?", options: ['To lead the Jews into battle', 'To make peace with בני ישראל', 'To bless the Jewish people', 'To curse the Jewish people'], correct: 'To curse the Jewish people' },
+  { num: 254, sefer: 'Bamidbar', question: "What unusual miracle happened to בלעם's donkey on the journey?", options: ['The donkey refused to eat for seven days', 'The donkey sprouted wings and flew', 'The donkey turned into a lion', 'The donkey spoke and rebuked בלעם'], correct: 'The donkey spoke and rebuked בלעם' },
+  { num: 255, sefer: 'Bamidbar', question: "When בלעם tried to curse the Jewish people, what came out of his mouth instead?", options: ['Blessings for בני ישראל', 'Curses that came true', 'Nothing at all', 'A warning to בלק'], correct: 'Blessings for בני ישראל' },
+  { num: 256, sefer: 'Bamidbar', question: "The Jews were led to sin with the daughters of which nation?", options: ['אדום', 'כנען', 'מואב', 'מצרים'], correct: 'מואב' },
+  { num: 257, sefer: 'Bamidbar', question: "פינחס acted zealously and killed זמרי together with a princess from מדין. What was her name?", options: ['כזבי', 'מרים', 'דינה', 'צפורה'], correct: 'כזבי' },
+  { num: 258, sefer: 'Bamidbar', question: "How was פינחס rewarded for his zealousness?", options: ['He was appointed head of the זקנים', 'He became the next leader after משה', 'He became a כהן', 'He received a double portion of land'], correct: 'He became a כהן' },
+  { num: 259, sefer: 'Bamidbar', question: "How was the land of Israel divided among the tribes?", options: ['By a lottery (גורל)', 'By the size of each tribe\'s army', 'By the decision of the seventy זקנים', 'By order of birth of the tribes'], correct: 'By a lottery (גורל)' },
+  { num: 260, sefer: 'Bamidbar', question: "Who was chosen to be the leader of בני ישראל after משה?", options: ['יהושע', 'אהרן', 'פינחס', 'כלב'], correct: 'יהושע' },
+  { num: 261, sefer: 'Bamidbar', question: "Which two tribes asked to receive their portion on the eastern side of the Jordan River (עבר הירדן)?", options: ['אפרים and מנשה', 'ראובן and גד', 'יהודה and שמעון', 'דן and נפתלי'], correct: 'ראובן and גד' },
+  { num: 262, sefer: 'Devarim', question: "On which two mountains were the blessings and curses to be pronounced after crossing the ירדן?", options: ['הר סיני and הר ההר', 'הר גריזים and הר עיבל', 'הר נבו and הר גריזים', 'הר עיבל and הר סיני'], correct: 'הר גריזים and הר עיבל' },
+  { num: 263, sefer: 'Devarim', question: "The מצוה of הקהל required the people to gather and hear the king read from the תורה. Who was obligated to attend?", options: ['Only the seventy זקנים', 'Only the כהנים and לויים', 'Only adult men', 'Men, women, and children'], correct: 'Men, women, and children' },
+  { num: 264, sefer: 'Devarim', question: "What opportunity was משה given before he died?", options: ['To offer one final קרבן in the בית המקדש', 'To choose his own successor', 'To enter the land of Israel for one day', 'To go up on a mountain and see the land of Israel'], correct: 'To go up on a mountain and see the land of Israel' },
+  { num: 265, sefer: 'Devarim', question: "What did משה do for בני ישראל just before he died?", options: ['He counted them one final time', 'He rebuked them for their sins', 'He blessed them', 'He divided the land among them'], correct: 'He blessed them' },
+  { num: 266, sefer: 'Devarim', question: "How old was משה when he died?", options: ['100 years old', '120 years old', '137 years old', '80 years old'], correct: '120 years old' },
+  { num: 267, sefer: 'Devarim', question: "What does the Torah tell us about the burial place of משה?", options: ['He was buried in the land of Israel', 'He was buried in the מערת המכפלה', 'Nobody knows exactly where he was buried', 'He was buried at הר סיני'], correct: 'Nobody knows exactly where he was buried' },
+  { num: 268, sefer: 'Devarim', question: "What does the Torah say about the greatness of משה as a prophet?", options: ['יהושע would one day become greater than him', 'There never was and never will be a prophet greater than him', 'He was the greatest prophet only of his own generation', 'He was equal in greatness to אברהם'], correct: 'There never was and never will be a prophet greater than him' },
+];
+
+function startKnowledgeIntro() { hide('hubMenuArea'); show('knowledgeIntroArea'); }
+
+function beginKnowledge() {
+    state.knowledgeHistory = [];
+    state.knowledgeIndex = 0;
+    state.knowledgeQueue = [];
+    KNOWLEDGE_SEFARIM.forEach(sefer => {
+        const pool = KNOWLEDGE_BANK.filter(q => q.sefer === sefer);
+        const picks = [...pool].sort(() => Math.random() - 0.5).slice(0, KNOWLEDGE_PER_SEFER);
+        state.knowledgeQueue.push(...picks);
+    });
+    hide('knowledgeIntroArea'); show('quizArea'); show('quizProgress');
+    runKnowledgeNext();
+}
+
+function runKnowledgeNext() {
+    const total = state.knowledgeQueue.length;
+    if (state.knowledgeIndex >= total) return finishKnowledge();
+    document.getElementById('progressBar').style.width = (state.knowledgeIndex/total*100)+'%';
+    const q = state.knowledgeQueue[state.knowledgeIndex];
+    renderChoiceQuestion(q.question, q.options, (picked) => window.ansKnowledge(picked, q), { hebrew: false });
+}
+
+window.ansKnowledge = (picked, q) => {
+    const isCorrect = (picked === q.correct);
+    state.knowledgeHistory.push({ num: q.num, sefer: q.sefer, question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped" });
+    state.knowledgeIndex++;
+    runKnowledgeNext();
+};
+
+function finishKnowledge() {
+    hide('quizArea'); hide('quizProgress');
+    document.getElementById('resultsDesc').innerHTML =
+        `Generating your results and recommendations...<br><span style="font-size:0.85rem;color:#a6998a;">Please do not exit the app or close this window.</span>`;
+    show('resultsArea');
+
+    const seferScores = {};
+    KNOWLEDGE_SEFARIM.forEach(s => {
+        const rows = state.knowledgeHistory.filter(h => h.sefer === s);
+        seferScores[s] = { correct: rows.filter(h => h.correct).length, total: rows.length };
+    });
+
+    // FETCH TO EXTERNAL APPS SCRIPT URL - the server asks Gemini for a short
+    // recommendation based on the per-sefer scores and which questions were
+    // missed, so keep the beforeunload/isUploading protection on like audio.
+    isUploading = true;
+    fetch(GAS_WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+            action: "saveKnowledge",
+            payload: { name: state.name, seferScores: seferScores, history: state.knowledgeHistory }
+        }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(data => {
+        isUploading = false;
+        if (data.success) {
+            const scoreLines = KNOWLEDGE_SEFARIM.map(s => `${s}: ${seferScores[s].correct}/${seferScores[s].total}`).join('<br>');
+            const recLine = data.recommendation ? `<br><br><strong>Areas to focus on:</strong> ${data.recommendation}` : '';
+            document.getElementById('resultsDesc').innerHTML = `Chumash Knowledge Check-In logged successfully!<br><br>${scoreLines}${recLine}`;
+        } else {
+            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
+        }
+    })
+    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
+}
+
 
 function startAudio() { hide('hubMenuArea'); show('audioArea'); }
 
