@@ -46,6 +46,15 @@
   .intake-question-text.rich-text {
     display: block; text-align: left; white-space: normal;
   }
+  .rich-line { margin: 0 0 0.6em; }
+  .rich-line:last-child { margin-bottom: 0; }
+  .rich-label {
+    font-family: 'Frank Ruhl Libre', serif; font-weight: bold; font-size: 1.25rem;
+    margin: 0.9em 0 0.2em;
+  }
+  .rich-label:first-child { margin-top: 0; }
+  .rashi-passage { font-family: 'RashiScript', serif; font-size: 1.4rem; line-height: 1.7; }
+  .rashi-translation { font-style: italic; color: #8a7d6d; font-size: 0.95rem; }
 </style>
 </head>
 <body>
@@ -73,7 +82,7 @@
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="skillsIntroArea" class="hidden">
-        <p>You'll get 33 questions covering all 30 official Chumash Skills standards, plus a special Rashi section on two pesukim (grouped together, not mixed in with the rest).</p>
+        <p>You'll get one question for each Chumash Skills standard, plus a short Rashi section on one pasuk (3 questions, grouped together at the end).</p>
         <button class="intake-choice" onclick="beginSkills()">Begin</button>
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
@@ -467,22 +476,55 @@ function setVocabLevel(evalName, rank) {
 // Safely renders text that may contain \n line breaks and **bold** markers
 // (used by the Chumash Skills Rashi questions) using createElement/textContent
 // + createTextNode — never innerHTML — so authored content can never break
-// the markup no matter what characters it contains.
+// the markup no matter what characters it contains. Each line becomes its own
+// dir="auto" block so the browser picks RTL/LTR per line based on that line's
+// own content, instead of inheriting a base direction from whatever English
+// text happens to come first in the whole string — which is what was causing
+// quotation marks and blanks/underscores next to Hebrew words to render on
+// the wrong side.
 function renderRichText(container, text) {
     const lines = text.split('\n');
-    lines.forEach((line, i) => {
+    lines.forEach((line) => {
+        const lineDiv = document.createElement('div');
+        lineDiv.className = 'rich-line';
+        lineDiv.dir = 'auto';
         const parts = line.split(/(\*\*[^*]+\*\*)/g);
         parts.forEach(part => {
             if (part.startsWith('**') && part.endsWith('**')) {
                 const strong = document.createElement('strong');
                 strong.textContent = part.slice(2, -2);
-                container.appendChild(strong);
+                lineDiv.appendChild(strong);
             } else if (part) {
-                container.appendChild(document.createTextNode(part));
+                lineDiv.appendChild(document.createTextNode(part));
             }
         });
-        if (i < lines.length - 1) container.appendChild(document.createElement('br'));
+        container.appendChild(lineDiv);
     });
+}
+
+// Shared option-button + skip-button builders, used by every quiz type.
+function renderOptionButtons(container, options, onPick, rashiOptions) {
+    // De-dupe option text (a few facts/words legitimately share the same
+    // English answer) so no two buttons ever show identical text.
+    const choices = [...new Set(options)].sort(() => Math.random() - 0.5);
+    const choicesDiv = document.createElement('div');
+    choicesDiv.className = 'intake-choices';
+    choices.forEach(o => {
+        const btn = document.createElement('button');
+        btn.className = 'intake-choice' + (rashiOptions ? ' rashi-font' : '');
+        btn.textContent = o;
+        btn.addEventListener('click', () => onPick(o));
+        choicesDiv.appendChild(btn);
+    });
+    container.appendChild(choicesDiv);
+}
+
+function appendSkipButton(container, onPick) {
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'intake-skip';
+    skipBtn.innerHTML = "I'm not sure &rarr;";
+    skipBtn.addEventListener('click', () => onPick(null));
+    container.appendChild(skipBtn);
 }
 
 // Shared question renderer used by the Vocabulary, Chumash Knowledge, and
@@ -503,25 +545,59 @@ function renderChoiceQuestion(displayText, options, onPick, { hebrew = false, ri
     }
     quizArea.appendChild(promptDiv);
 
-    // De-dupe option text (a few facts/words legitimately share the same
-    // English answer) so no two buttons ever show identical text.
-    const choices = [...new Set(options)].sort(() => Math.random() - 0.5);
-    const choicesDiv = document.createElement('div');
-    choicesDiv.className = 'intake-choices';
-    choices.forEach(o => {
-        const btn = document.createElement('button');
-        btn.className = 'intake-choice' + (rashiOptions ? ' rashi-font' : '');
-        btn.textContent = o;
-        btn.addEventListener('click', () => onPick(o));
-        choicesDiv.appendChild(btn);
-    });
-    quizArea.appendChild(choicesDiv);
+    renderOptionButtons(quizArea, options, onPick, rashiOptions);
+    appendSkipButton(quizArea, onPick);
+}
 
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'intake-skip';
-    skipBtn.innerHTML = "I'm not sure &rarr;";
-    skipBtn.addEventListener('click', () => onPick(null));
-    quizArea.appendChild(skipBtn);
+// Dedicated renderer for the 3 fixed Rashi questions (standards 23/25/26).
+// Unlike the generic string-based renderChoiceQuestion, this builds the DOM
+// directly from structured fields (pasukText/rashiHe/rashiEn/questionStem) so
+// "פָּסוּק" and "רַשִׁ"י" can be shown as bold section labels on their own
+// lines, and the Rashi's Hebrew comment itself can render in the Rashi font.
+function renderFixedRashiQuestion(q, onPick) {
+    const quizArea = document.getElementById('quizArea');
+    quizArea.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'intake-question-text rich-text';
+
+    const pasukLabel = document.createElement('div');
+    pasukLabel.className = 'rich-label';
+    pasukLabel.textContent = 'פָּסוּק';
+    wrap.appendChild(pasukLabel);
+
+    const pasukLine = document.createElement('div');
+    pasukLine.className = 'rich-line';
+    pasukLine.dir = 'auto';
+    pasukLine.textContent = `(${q.pasukRef}) ${q.pasukText}`;
+    wrap.appendChild(pasukLine);
+
+    const rashiLabel = document.createElement('div');
+    rashiLabel.className = 'rich-label';
+    rashiLabel.textContent = 'רַשִׁ"י';
+    wrap.appendChild(rashiLabel);
+
+    const rashiPassage = document.createElement('div');
+    rashiPassage.className = 'rashi-passage';
+    renderRichText(rashiPassage, q.rashiHe); // parses the bolded דיבור המתחיל, inherits the Rashi font
+    wrap.appendChild(rashiPassage);
+
+    const translationLine = document.createElement('div');
+    translationLine.className = 'rich-line rashi-translation';
+    translationLine.dir = 'auto';
+    translationLine.textContent = q.rashiEn;
+    wrap.appendChild(translationLine);
+
+    const stemLine = document.createElement('div');
+    stemLine.className = 'rich-line';
+    stemLine.dir = 'auto';
+    stemLine.style.marginTop = '0.9em';
+    stemLine.textContent = q.questionStem;
+    wrap.appendChild(stemLine);
+
+    quizArea.appendChild(wrap);
+    renderOptionButtons(quizArea, q.options, onPick, false);
+    appendSkipButton(quizArea, onPick);
 }
 
 function runNext() {
@@ -1314,7 +1390,7 @@ const SKILLS_BANK = [
     "id": 28,
     "standard": 6,
     "rank": 1,
-    "question": "Which word correctly completes the phrase to mean 'big men'? אֲנָשִׁים ___",
+    "question": "Which word correctly completes the phrase to mean 'big men'?\nאֲנָשִׁים ___",
     "options": [
       "גָּדוֹל",
       "גְּדוֹלוֹת",
@@ -1398,7 +1474,7 @@ const SKILLS_BANK = [
     "id": 34,
     "standard": 7,
     "rank": 2,
-    "question": "What is the best translation of the word in quotation marks? \"וְהָאָדָם\" יָדַע אֶת־חַוָּה אִשְׁתּוֹ",
+    "question": "What is the best translation of the word in quotation marks?\n\"וְהָאָדָם\" יָדַע אֶת־חַוָּה אִשְׁתּוֹ",
     "options": [
       "the man",
       "like the man",
@@ -1423,80 +1499,10 @@ const SKILLS_BANK = [
     "correctLetter": "B"
   },
   {
-    "id": 36,
-    "standard": 8,
-    "rank": 1,
-    "question": "Which of the following words may be translated as \"in (or on) the ____\"?",
-    "options": [
-      "בְּעֵינָיו",
-      "בְּאֶרֶץ",
-      "בַּמִּדְבָּר",
-      "בְּיָדוֹ"
-    ],
-    "correct": "בַּמִּדְבָּר",
-    "correctLetter": "C"
-  },
-  {
-    "id": 37,
-    "standard": 8,
-    "rank": 1,
-    "question": "Which of the following words may be translated as \"to the ____\"?",
-    "options": [
-      "לַמֶּלֶךְ",
-      "לְעוֹלָם",
-      "לְמֹשֶׁה",
-      "לְאִישׁ"
-    ],
-    "correct": "לַמֶּלֶךְ",
-    "correctLetter": "A"
-  },
-  {
-    "id": 38,
-    "standard": 8,
-    "rank": 1,
-    "question": "The words בְּ + הַבַּיִת combine to form which one word?",
-    "options": [
-      "בֵּיתַ",
-      "בָּבַּיִת",
-      "בַּבַּיִת",
-      "בְּהַבַּיִת"
-    ],
-    "correct": "בַּבַּיִת",
-    "correctLetter": "C"
-  },
-  {
-    "id": 39,
-    "standard": 8,
-    "rank": 3,
-    "question": "Which is the correct combined form of בְּ + הָאָרֶץ (\"in the land\")?",
-    "options": [
-      "בָּאָרֶץ",
-      "בֶּאָרֶץ",
-      "בְּהָאָרֶץ",
-      "בַּאָרֶץ"
-    ],
-    "correct": "בָּאָרֶץ",
-    "correctLetter": "A"
-  },
-  {
-    "id": 40,
-    "standard": 8,
-    "rank": 2,
-    "question": "What is the best translation of the word in quotation marks? וַיִּשְׁכַּב \"בַּמָּקוֹם\" הַהוּא",
-    "options": [
-      "like the place",
-      "in a place",
-      "from the place",
-      "in the place"
-    ],
-    "correct": "in the place",
-    "correctLetter": "D"
-  },
-  {
     "id": 41,
     "standard": 9,
     "rank": 1,
-    "question": "What is the best translation of the following phrase? דְּבַר ה'",
+    "question": "What is the best translation of the following phrase?\nדְּבַר ה'",
     "options": [
       "Hashem spoke",
       "the word of Hashem",
@@ -1594,7 +1600,7 @@ const SKILLS_BANK = [
     "id": 48,
     "standard": 10,
     "rank": 1,
-    "question": "What is the best translation of the word in quotation marks? וְהִתְוַדּוּ אֶת־\"עֲוֹנָם\"",
+    "question": "What is the best translation of the word in quotation marks?\nוְהִתְוַדּוּ אֶת־\"עֲוֹנָם\"",
     "options": [
       "her sin",
       "my sin",
@@ -1622,14 +1628,14 @@ const SKILLS_BANK = [
     "id": 50,
     "standard": 10,
     "rank": 1,
-    "question": "What is the best translation of the word in quotation marks? וּבְשָׁכְבְּךָ \"בְּבֵיתֶךָ\"",
+    "question": "What is the best translation of the word in quotation marks?\nוּבְשָׁכְבְּךָ \"בְּבֵיתֶךָ\"",
     "options": [
-      "her house",
-      "your house",
-      "his house",
-      "my house"
+      "in her house",
+      "in your house",
+      "in his house",
+      "in my house"
     ],
-    "correct": "your house",
+    "correct": "in your house",
     "correctLetter": "B"
   },
   {
@@ -1692,7 +1698,7 @@ const SKILLS_BANK = [
     "id": 55,
     "standard": 11,
     "rank": 3,
-    "question": "What is the best translation of the word in quotation marks? וַיַּרְא יוֹסֵף אֶת־\"אֶחָיו\"",
+    "question": "What is the best translation of the word in quotation marks?\nוַיַּרְא יוֹסֵף אֶת־\"אֶחָיו\"",
     "options": [
       "their brothers",
       "their brother",
@@ -1748,7 +1754,7 @@ const SKILLS_BANK = [
     "id": 59,
     "standard": 12,
     "rank": 3,
-    "question": "What is the best translation of the word in quotation marks? \"וְאָהַבְתָּ\" אֵת ה' אֱלֹקֶיךָ",
+    "question": "What is the best translation of the word in quotation marks?\n\"וְאָהַבְתָּ\" אֵת ה' אֱלֹקֶיךָ",
     "options": [
       "and he loved",
       "and you shall love",
@@ -1818,7 +1824,7 @@ const SKILLS_BANK = [
     "id": 64,
     "standard": 13,
     "rank": 2,
-    "question": "What is the best translation of the word in quotation marks? וַיֵּצֵא יַעֲקֹב מִבְּאֵר שָׁבַע וַיֵּלֶךְ \"חָרָנָה\"",
+    "question": "What is the best translation of the word in quotation marks?\nוַיֵּצֵא יַעֲקֹב מִבְּאֵר שָׁבַע וַיֵּלֶךְ \"חָרָנָה\"",
     "options": [
       "her Charan",
       "to Charan",
@@ -1832,7 +1838,7 @@ const SKILLS_BANK = [
     "id": 65,
     "standard": 13,
     "rank": 3,
-    "question": "What is the best translation of the word in quotation marks? וַיִּשְׁתַּחוּ אַפַּיִם \"אָרְצָה\"",
+    "question": "What is the best translation of the word in quotation marks?\nוַיִּשְׁתַּחוּ אַפַּיִם \"אָרְצָה\"",
     "options": [
       "to the ground",
       "her land",
@@ -1972,7 +1978,7 @@ const SKILLS_BANK = [
     "id": 75,
     "standard": 15,
     "rank": 3,
-    "question": "What is the best translation of the word in quotation marks? וַתֹּאמֶר ... מַה־זֹּאת \"עָשִׂית\"",
+    "question": "What is the best translation of the word in quotation marks?\nוַתֹּאמֶר ... מַה־זֹּאת \"עָשִׂית\"",
     "options": [
       "I did",
       "you (f.) did",
@@ -2405,7 +2411,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית א:א",
     "groupKey": "בְּרֵאשִׁית א:א",
     "groupOrder": 1,
-    "orderWithinGroup": 3
+    "orderWithinGroup": 3,
+    "pasukText": "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+    "rashiHe": "**בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.",
+    "rashiEn": "Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.",
+    "questionStem": "What lesson can be derived from this Rashi?"
   },
   {
     "id": 112,
@@ -2424,7 +2434,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית ג:ט",
     "groupKey": "בְּרֵאשִׁית ג:ט",
     "groupOrder": 2,
-    "orderWithinGroup": 3
+    "orderWithinGroup": 3,
+    "pasukText": "וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה",
+    "rashiHe": "**אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.",
+    "rashiEn": "Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.",
+    "questionStem": "What lesson can be derived from this Rashi?"
   },
   {
     "id": 113,
@@ -2523,7 +2537,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית א:א",
     "groupKey": "בְּרֵאשִׁית א:א",
     "groupOrder": 1,
-    "orderWithinGroup": 1
+    "orderWithinGroup": 1,
+    "pasukText": "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+    "rashiHe": "**בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.",
+    "rashiEn": "Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.",
+    "questionStem": "What is the דִּבּוּר הַמַּתְחִיל of this Rashi?"
   },
   {
     "id": 119,
@@ -2542,7 +2560,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית ג:ט",
     "groupKey": "בְּרֵאשִׁית ג:ט",
     "groupOrder": 2,
-    "orderWithinGroup": 1
+    "orderWithinGroup": 1,
+    "pasukText": "וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה",
+    "rashiHe": "**אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.",
+    "rashiEn": "Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.",
+    "questionStem": "What is the דִּבּוּר הַמַּתְחִיל of this Rashi?"
   },
   {
     "id": 120,
@@ -2561,7 +2583,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית א:א",
     "groupKey": "בְּרֵאשִׁית א:א",
     "groupOrder": 1,
-    "orderWithinGroup": 2
+    "orderWithinGroup": 2,
+    "pasukText": "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+    "rashiHe": "**בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.",
+    "rashiEn": "Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.",
+    "questionStem": "Which choice best describes the question Rashi is answering here?"
   },
   {
     "id": 121,
@@ -2580,7 +2606,11 @@ const SKILLS_BANK = [
     "pasukRef": "בְּרֵאשִׁית ג:ט",
     "groupKey": "בְּרֵאשִׁית ג:ט",
     "groupOrder": 2,
-    "orderWithinGroup": 2
+    "orderWithinGroup": 2,
+    "pasukText": "וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה",
+    "rashiHe": "**אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.",
+    "rashiEn": "Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.",
+    "questionStem": "Which choice best describes the question Rashi is answering here?"
   },
   {
     "id": 122,
@@ -2636,90 +2666,6 @@ const SKILLS_BANK = [
       "253"
     ],
     "correct": "248",
-    "correctLetter": "A"
-  },
-  {
-    "id": 126,
-    "standard": 27,
-    "rank": 3,
-    "question": "What is the numerical value (גִּימַטְרִיָּה) of this phrase? עַם יִשְׂרָאֵל",
-    "options": [
-      "661",
-      "646",
-      "651",
-      "641"
-    ],
-    "correct": "651",
-    "correctLetter": "C"
-  },
-  {
-    "id": 127,
-    "standard": 28,
-    "rank": 1,
-    "question": "Which text is the actual pasuk of בְּרֵאשִׁית א:א?",
-    "options": [
-      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
-      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
-      "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
-      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר"
-    ],
-    "correct": "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
-    "correctLetter": "B"
-  },
-  {
-    "id": 128,
-    "standard": 28,
-    "rank": 3,
-    "question": "Which text is the actual pasuk of בְּרֵאשִׁית א:ג?",
-    "options": [
-      "וַיַּרְא אֱלֹקִים אֶת־הָאוֹר כִּי־טוֹב וַיַּבְדֵּל אֱלֹקִים בֵּין הָאוֹר וּבֵין הַחֹשֶׁךְ",
-      "וְהָאָרֶץ הָיְתָה תֹהוּ וָבֹהוּ וְחֹשֶׁךְ עַל־פְּנֵי תְהוֹם וְרוּחַ אֱלֹקִים מְרַחֶפֶת עַל־פְּנֵי הַמָּיִם",
-      "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
-      "וַיִּקְרָא אֱלֹקִים לָאוֹר יוֹם וְלַחֹשֶׁךְ קָרָא לָיְלָה וַיְהִי־עֶרֶב וַיְהִי־בֹקֶר יוֹם אֶחָד"
-    ],
-    "correct": "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
-    "correctLetter": "C"
-  },
-  {
-    "id": 129,
-    "standard": 28,
-    "rank": 2,
-    "question": "Which text is the actual pasuk of שְׁמוֹת א:א?",
-    "options": [
-      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
-      "וַיָּקָם מֶלֶךְ־חָדָשׁ עַל־מִצְרָיִם אֲשֶׁר לֹא־יָדַע אֶת־יוֹסֵף",
-      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
-      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ"
-    ],
-    "correct": "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
-    "correctLetter": "D"
-  },
-  {
-    "id": 130,
-    "standard": 28,
-    "rank": 2,
-    "question": "Which text is the actual pasuk of דְּבָרִים ו:ד?",
-    "options": [
-      "אָנֹכִי ה' אֱלֹקֶיךָ אֲשֶׁר הוֹצֵאתִיךָ מֵאֶרֶץ מִצְרַיִם מִבֵּית עֲבָדִים",
-      "שְׁמַע יִשְׂרָאֵל ה' אֱלֹקֵינוּ ה' אֶחָד",
-      "וְאָהַבְתָּ אֵת ה' אֱלֹקֶיךָ בְּכָל־לְבָבְךָ וּבְכָל־נַפְשְׁךָ וּבְכָל־מְאֹדֶךָ",
-      "וְשִׁנַּנְתָּם לְבָנֶיךָ וְדִבַּרְתָּ בָּם בְּשִׁבְתְּךָ בְּבֵיתֶךָ וּבְלֶכְתְּךָ בַדֶּרֶךְ וּבְשָׁכְבְּךָ וּבְקוּמֶךָ"
-    ],
-    "correct": "שְׁמַע יִשְׂרָאֵל ה' אֱלֹקֵינוּ ה' אֶחָד",
-    "correctLetter": "B"
-  },
-  {
-    "id": 131,
-    "standard": 28,
-    "rank": 2,
-    "question": "Which text is the actual pasuk of וַיִּקְרָא א:א?",
-    "options": [
-      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
-      "וַיְדַבֵּר ה' אֶל־מֹשֶׁה בְּמִדְבַּר סִינַי בְּאֹהֶל מוֹעֵד בְּאֶחָד לַחֹדֶשׁ הַשֵּׁנִי בַּשָּׁנָה הַשֵּׁנִית לְצֵאתָם מֵאֶרֶץ מִצְרַיִם לֵאמֹר",
-      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
-      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ"
-    ],
-    "correct": "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
     "correctLetter": "A"
   },
   {
@@ -2878,8 +2824,16 @@ function beginSkills() {
         randomPicks.push(pool[Math.floor(Math.random() * pool.length)]);
     }
     const shuffledRandom = [...randomPicks].sort(() => Math.random() - 0.5);
-    const fixedBlock = SKILLS_BANK.filter(q => q.fixed)
-        .sort((a, b) => (a.groupOrder - b.groupOrder) || (a.orderWithinGroup - b.orderWithinGroup));
+
+    // Only one pasuk's worth of Rashi questions per attempt (not both) —
+    // pick one groupKey at random, then take its 3 questions in the fixed
+    // dibbur-hamatchil -> Rashi's-question -> lesson order.
+    const fixedPool = SKILLS_BANK.filter(q => q.fixed);
+    const groupKeys = [...new Set(fixedPool.map(q => q.groupKey))];
+    const chosenGroup = groupKeys[Math.floor(Math.random() * groupKeys.length)];
+    const fixedBlock = fixedPool.filter(q => q.groupKey === chosenGroup)
+        .sort((a, b) => a.orderWithinGroup - b.orderWithinGroup);
+
     state.skillsQueue = [...shuffledRandom, ...fixedBlock];
     hide('skillsIntroArea'); show('quizArea'); show('quizProgress');
     runSkillsNext();
@@ -2890,10 +2844,14 @@ function runSkillsNext() {
     if (state.skillsIndex >= total) return finishSkills();
     document.getElementById('progressBar').style.width = (state.skillsIndex / total * 100) + '%';
     const q = state.skillsQueue[state.skillsIndex];
-    renderChoiceQuestion(q.question, q.options, (picked) => window.ansSkills(picked, q), {
-        richText: true,
-        rashiOptions: q.displayMode === 'rashi_options'
-    });
+    if (q.fixed) {
+        renderFixedRashiQuestion(q, (picked) => window.ansSkills(picked, q));
+    } else {
+        renderChoiceQuestion(q.question, q.options, (picked) => window.ansSkills(picked, q), {
+            richText: true,
+            rashiOptions: q.displayMode === 'rashi_options'
+        });
+    }
 }
 
 window.ansSkills = (picked, q) => {
