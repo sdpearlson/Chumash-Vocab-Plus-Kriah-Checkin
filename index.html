@@ -473,6 +473,16 @@ function setVocabLevel(evalName, rank) {
     hide('selfEvalArea'); show('quizArea'); show('quizProgress'); runNext();
 }
 
+// A line counts as Hebrew-dominant if most of its letters (ignoring numbers,
+// punctuation, and quote/parenthesis characters) are in the Hebrew block —
+// used to right-justify pesukim and Rashi text without needing every call
+// site to say so explicitly.
+function isHebrewDominant(text) {
+    const hebrewLetters = (text.match(/[֐-׿]/g) || []).length;
+    const allLetters = (text.match(/[A-Za-z֐-׿]/g) || []).length;
+    return allLetters > 0 && hebrewLetters / allLetters > 0.5;
+}
+
 // Safely renders text that may contain \n line breaks and **bold** markers
 // (used by the Chumash Skills Rashi questions) using createElement/textContent
 // + createTextNode — never innerHTML — so authored content can never break
@@ -481,13 +491,15 @@ function setVocabLevel(evalName, rank) {
 // own content, instead of inheriting a base direction from whatever English
 // text happens to come first in the whole string — which is what was causing
 // quotation marks and blanks/underscores next to Hebrew words to render on
-// the wrong side.
+// the wrong side. Lines that are themselves mostly Hebrew (a pasuk, a Rashi
+// passage) are also right-justified, not just right-to-left internally.
 function renderRichText(container, text) {
     const lines = text.split('\n');
     lines.forEach((line) => {
         const lineDiv = document.createElement('div');
         lineDiv.className = 'rich-line';
         lineDiv.dir = 'auto';
+        if (isHebrewDominant(line)) lineDiv.style.textAlign = 'right';
         const parts = line.split(/(\*\*[^*]+\*\*)/g);
         parts.forEach(part => {
             if (part.startsWith('**') && part.endsWith('**')) {
@@ -569,7 +581,9 @@ function renderFixedRashiQuestion(q, onPick) {
     const pasukLine = document.createElement('div');
     pasukLine.className = 'rich-line';
     pasukLine.dir = 'auto';
-    pasukLine.textContent = `(${q.pasukRef}) ${q.pasukText}`;
+    const pasukDisplay = `(${q.pasukRef}) ${q.pasukText}`;
+    if (isHebrewDominant(pasukDisplay)) pasukLine.style.textAlign = 'right';
+    pasukLine.textContent = pasukDisplay;
     wrap.appendChild(pasukLine);
 
     const rashiLabel = document.createElement('div');
