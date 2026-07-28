@@ -38,6 +38,14 @@
   .intake-progress-bar { height: 100%; width: 0%; background: #3e362e; transition: width 0.4s; }
   .intake-skip { background: none; border: none; color: #a6998a; cursor: pointer; font-size: 0.9rem; margin-top: 20px; }
   .hidden { display: none; }
+  @font-face {
+    font-family: 'RashiScript';
+    src: url(data:font/truetype;charset=utf-8;base64,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AAEAaAAAAAEBJwAAAAEBIgAAAAEAfAAAAAIAAQA9AFcAAAABAAkAKgAuAC8AMAAxADIAMwA1ADwACQABACYAAQAsAAAAMgAAADgAAAA+AAAARAACAEoAAABQAAAAVgABAAAAAAABAAAAAAABAAAAAAABAAAAAAABAAAAAAABAAAAAAABAAAAAAAB/8sAAAABAAAAAAABAEQANgABAE4ADAAFAAwAEgAYAB4AJAABARgAAAABAXIAAAABAQ4AAAABASIAAAABAUIAAAABAAUAPQBBAEQATwBVAAEAAwArACwALQADAAAADgAAABQAAAAaAAEAAAAAAAEAAAAAAAEAAAAAAAEAHAAWAAEAJAAMAAEABAABALIAAAABAAEARwABAAIAKgAyAAIAAAAKAAAAEAABAAD+cAABAAD+cAADAAEAGgABABIAAAABAAAABQABAAIAKgAyAAEAAQBHAAEAMAAmAAEANgAMAAMACAAOABQAAQH+AAAAAQHnAAAAAQH7AAAAAQADAEEARABPAAEAAQAxAAEAAAAGAAEAAAAAAAEAJgAeAAEALAAMAAIABgAMAAH+XQAKAAH+XQAKAAEAAgAxADIAAQABAC4AAQAAAAYAAQAAAAAAAwACABoAJAABABQAAAABAAAABwABAAEAMQABAAMAQQBEAE8AAQAHAC4ALwAwADMANQA8AGEAAwADABwAJgAsAAEAFgAAAAEAAAAHAAEAAQAxAAEAAwBBAEQATwABAAEANgABAAEAQgADAAMAHAAiACgAAQAWAAAAAQAAAAcAAQABADEAAQABADYAAQABAEEAAQAGAC4ALwAwADMANQBhAAMABAAeACQAKgAwAAEAGAAAAAEAAAAHAAEAAQAxAAEAAQA2AAEAAQBBAAEAAQA2AAEAAQBCAAMAAwAcACYALAABABYAAAABAAAABwABAAEAMQABAAMAQQBEAE8AAQABAEYAAQABAC4AAwAEAB4AJAAqADAAAQAYAAAAAQAAAAcAAQABADEAAQABADYAAQABAEEAAQABAEYAAQABAC4AAwAAAAEAEgABABgAAQAAAAMAAQABADEAAgADAD0AWgAAAF4AXwAeAGEAYQAgAAAAAAABAAAAAMw9os8AAAAAxVAsJAAAAADNGewZ) format('truetype');
+  }
+  .rashi-font { font-family: 'RashiScript', serif !important; font-size: 1.9rem; }
+  .intake-question-text.rich-text {
+    display: block; text-align: left; white-space: normal;
+  }
 </style>
 </head>
 <body>
@@ -48,6 +56,7 @@
         <p>Welcome, <span id="displayName"></span>. What are we doing today?</p>
         <button class="intake-choice" onclick="startVocab()">Vocabulary Check-In</button>
         <button class="intake-choice" onclick="startKnowledgeIntro()">Chumash Knowledge Check-In</button>
+        <button class="intake-choice" onclick="startSkillsIntro()">Chumash Skills Check-In</button>
         <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
     </div>
     <div id="selfEvalArea" class="hidden">
@@ -61,6 +70,11 @@
     <div id="knowledgeIntroArea" class="hidden">
         <p>You'll get 25 questions — 5 from each Sefer of the Chumash (Bereishit, Shemot, Vayikra, Bamidbar, Devarim).</p>
         <button class="intake-choice" onclick="beginKnowledge()">Begin</button>
+        <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
+    </div>
+    <div id="skillsIntroArea" class="hidden">
+        <p>You'll get 33 questions covering all 30 official Chumash Skills standards, plus a special Rashi section on two pesukim (grouped together, not mixed in with the rest).</p>
+        <button class="intake-choice" onclick="beginSkills()">Begin</button>
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="quizProgress" class="hidden"><div class="intake-progress-bar" id="progressBar"></div></div>
@@ -84,7 +98,8 @@ const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2
 
 const state = {
     name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0,
-    knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: []
+    knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: [],
+    skillsQueue: [], skillsIndex: 0, skillsHistory: []
 };
 let mediaRecorder;
 let audioChunks = [];
@@ -120,12 +135,13 @@ function goToHub() {
         activeStream.getTracks().forEach(track => track.stop());
         activeStream = null;
     }
-    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('quizArea'); hide('quizProgress');
+    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('quizArea'); hide('quizProgress');
     hide('audioArea'); hide('resultsArea');
 
-    // Reset per-attempt state so a fresh vocab/knowledge run or recording starts clean.
+    // Reset per-attempt state so a fresh vocab/knowledge/skills run or recording starts clean.
     state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
     state.knowledgeQueue = []; state.knowledgeIndex = 0; state.knowledgeHistory = [];
+    state.skillsQueue = []; state.skillsIndex = 0; state.skillsHistory = [];
     const recordBtn = document.getElementById('recordBtn');
     recordBtn.disabled = false;
     recordBtn.innerText = "🎤 Start Recording";
@@ -448,17 +464,43 @@ function setVocabLevel(evalName, rank) {
     hide('selfEvalArea'); show('quizArea'); show('quizProgress'); runNext();
 }
 
-// Shared question renderer used by both the Vocabulary and Chumash Knowledge
-// quizzes. Builds buttons with createElement/textContent + addEventListener
-// (never inline onclick strings built from data) so nothing about the
-// question text or options can ever break the markup.
-function renderChoiceQuestion(displayText, options, onPick, { hebrew = false } = {}) {
+// Safely renders text that may contain \n line breaks and **bold** markers
+// (used by the Chumash Skills Rashi questions) using createElement/textContent
+// + createTextNode — never innerHTML — so authored content can never break
+// the markup no matter what characters it contains.
+function renderRichText(container, text) {
+    const lines = text.split('\n');
+    lines.forEach((line, i) => {
+        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+        parts.forEach(part => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+                const strong = document.createElement('strong');
+                strong.textContent = part.slice(2, -2);
+                container.appendChild(strong);
+            } else if (part) {
+                container.appendChild(document.createTextNode(part));
+            }
+        });
+        if (i < lines.length - 1) container.appendChild(document.createElement('br'));
+    });
+}
+
+// Shared question renderer used by the Vocabulary, Chumash Knowledge, and
+// Chumash Skills quizzes. Builds buttons with createElement/textContent +
+// addEventListener (never inline onclick strings built from data) so nothing
+// about the question text or options can ever break the markup.
+function renderChoiceQuestion(displayText, options, onPick, { hebrew = false, richText = false, rashiOptions = false } = {}) {
     const quizArea = document.getElementById('quizArea');
     quizArea.innerHTML = '';
 
     const promptDiv = document.createElement('div');
     promptDiv.className = hebrew ? 'intake-hebrew-word' : 'intake-question-text';
-    promptDiv.textContent = displayText;
+    if (richText) {
+        promptDiv.classList.add('rich-text');
+        renderRichText(promptDiv, displayText);
+    } else {
+        promptDiv.textContent = displayText;
+    }
     quizArea.appendChild(promptDiv);
 
     // De-dupe option text (a few facts/words legitimately share the same
@@ -468,7 +510,7 @@ function renderChoiceQuestion(displayText, options, onPick, { hebrew = false } =
     choicesDiv.className = 'intake-choices';
     choices.forEach(o => {
         const btn = document.createElement('button');
-        btn.className = 'intake-choice';
+        btn.className = 'intake-choice' + (rashiOptions ? ' rashi-font' : '');
         btn.textContent = o;
         btn.addEventListener('click', () => onPick(o));
         choicesDiv.appendChild(btn);
@@ -889,6 +931,2018 @@ function finishKnowledge() {
     .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
 }
 
+// Official JSAT Level 8 Chumash Skills question bank (134 questions covering
+// all 30 official standards), reviewed and edited by the teacher. Standards
+// 23/25/26 are the fixed Rashi section (2 pesukim, "fixed": true) and are
+// always ALL included together (not drawn 1-per-standard like the rest of the
+// bank), grouped by pasuk via groupOrder/orderWithinGroup so a student always
+// answers all 3 questions about one Rashi before moving to the next. Standard
+// 24 (Rashi script recognition) renders its 4 options in the Rashi font via
+// displayMode: 'rashi_options' (prompt word stays in regular print).
+const SKILLS_STANDARD_CATEGORY = (standard) => {
+    if (standard <= 18) return 'Decoding the Text';
+    if (standard <= 23) return 'Understanding the Text';
+    if (standard <= 26) return 'Rashi Skills';
+    return 'Additional Skills';
+};
+const SKILLS_BANK = [
+  {
+    "id": 1,
+    "standard": 1,
+    "rank": 1,
+    "question": "What is the שֹׁרֶשׁ of the following word? תִּשְׁמְרוּ",
+    "options": [
+      "ש.מ.ר",
+      "ש.ר.מ",
+      "ש.מ.ה",
+      "ש.מ.ע"
+    ],
+    "correct": "ש.מ.ר",
+    "correctLetter": "A"
+  },
+  {
+    "id": 2,
+    "standard": 1,
+    "rank": 1,
+    "question": "Identify the שֹׁרֶשׁ of the word וַיִּכְתֹּב",
+    "options": [
+      "ת.כ.ב",
+      "כ.ת.ב",
+      "כ.ת.ר",
+      "כ.ב.ת"
+    ],
+    "correct": "כ.ת.ב",
+    "correctLetter": "B"
+  },
+  {
+    "id": 3,
+    "standard": 1,
+    "rank": 2,
+    "question": "What is the שֹׁרֶשׁ of the following word? נִדְבְּרוּ",
+    "options": [
+      "ד.ב.ה",
+      "ד.ב.ר",
+      "ר.ב.ד",
+      "ד.ב.ב"
+    ],
+    "correct": "ד.ב.ר",
+    "correctLetter": "B"
+  },
+  {
+    "id": 4,
+    "standard": 1,
+    "rank": 1,
+    "question": "What is the שֹׁרֶשׁ of the following word? שָׁמְעוּ",
+    "options": [
+      "מ.ש.ע",
+      "ש.מ.ה",
+      "ש.מ.ע",
+      "ש.מ.ר"
+    ],
+    "correct": "ש.מ.ע",
+    "correctLetter": "C"
+  },
+  {
+    "id": 5,
+    "standard": 1,
+    "rank": 2,
+    "question": "Which שֹׁרֶשׁ is the root of the word וַיִּזְכֹּר?",
+    "options": [
+      "ז.כ.ר",
+      "ז.כ.ה",
+      "כ.ר.ז",
+      "ז.ר.כ"
+    ],
+    "correct": "ז.כ.ר",
+    "correctLetter": "A"
+  },
+  {
+    "id": 6,
+    "standard": 2,
+    "rank": 2,
+    "question": "What is the שֹׁרֶשׁ or שֵׁם עֶצֶם of the following word? וַיֵּלֶךְ",
+    "options": [
+      "ל.כ.ו",
+      "ו.ל.ך",
+      "ל.ו.ך",
+      "ה.ל.ך"
+    ],
+    "correct": "ה.ל.ך",
+    "correctLetter": "D"
+  },
+  {
+    "id": 8,
+    "standard": 2,
+    "rank": 3,
+    "question": "What is the שֹׁרֶשׁ or שֵׁם עֶצֶם of the following word? וַיַּעַשׂ",
+    "options": [
+      "ע.ש.ה",
+      "ע.ש.י",
+      "י.ש.ע",
+      "ע.ש.ש"
+    ],
+    "correct": "ע.ש.ה",
+    "correctLetter": "A"
+  },
+  {
+    "id": 9,
+    "standard": 2,
+    "rank": 2,
+    "question": "Identify the שֹׁרֶשׁ of the word וַיֵּשֶׁב.",
+    "options": [
+      "ה.ש.ב",
+      "ש.ו.ב",
+      "י.ש.ב",
+      "י.ש.ה"
+    ],
+    "correct": "י.ש.ב",
+    "correctLetter": "C"
+  },
+  {
+    "id": 10,
+    "standard": 2,
+    "rank": 3,
+    "question": "What is the שֹׁרֶשׁ of the following word? וַיִּתֵּן",
+    "options": [
+      "י.ת.ן",
+      "נ.ת.ן",
+      "ת.נ.ן",
+      "נ.ת.ה"
+    ],
+    "correct": "נ.ת.ן",
+    "correctLetter": "B"
+  },
+  {
+    "id": 11,
+    "standard": 3,
+    "rank": 1,
+    "question": "Which of the following sets of words contains only plural words?",
+    "options": [
+      "מְלָכִים, דְּבָרִים, נָשִׁים",
+      "יָמִים, תּוֹרָה, שָׁנִים",
+      "סוּסִים, מַלְכָּה, אֲרָצוֹת",
+      "בָּנִים, עִיר, מִצְוֹת"
+    ],
+    "correct": "מְלָכִים, דְּבָרִים, נָשִׁים",
+    "correctLetter": "A"
+  },
+  {
+    "id": 12,
+    "standard": 3,
+    "rank": 2,
+    "question": "Which of the following words is plural?",
+    "options": [
+      "דְּבָרִים",
+      "מִדְבָּר",
+      "דּוֹר",
+      "דָּבָר"
+    ],
+    "correct": "דְּבָרִים",
+    "correctLetter": "A"
+  },
+  {
+    "id": 13,
+    "standard": 3,
+    "rank": 2,
+    "question": "Which of the following sets of words contains only singular nouns?",
+    "options": [
+      "עִיר, עָרִים, יָד",
+      "בַּת, בָּנוֹת, אֵם",
+      "אִישׁ, אֶרֶץ, לַיְלָה",
+      "מֶלֶךְ, מְלָכִים, גּוֹי"
+    ],
+    "correct": "אִישׁ, אֶרֶץ, לַיְלָה",
+    "correctLetter": "C"
+  },
+  {
+    "id": 14,
+    "standard": 3,
+    "rank": 2,
+    "question": "Which of the following sets of words contains only plural words?",
+    "options": [
+      "יָמִים, לַיְלָה, שָׁנִים",
+      "אָבוֹת, בָּנִים, נָשִׁים",
+      "שָׁמַיִם, אֶרֶץ, מַיִם",
+      "סוּסוֹת, פָּרָה, מִצְוֹת"
+    ],
+    "correct": "אָבוֹת, בָּנִים, נָשִׁים",
+    "correctLetter": "B"
+  },
+  {
+    "id": 15,
+    "standard": 3,
+    "rank": 3,
+    "question": "Which of the following words is grammatically PLURAL, even though it names a single substance?",
+    "options": [
+      "בְּאֵר",
+      "מַיִם",
+      "נָהָר",
+      "יָם"
+    ],
+    "correct": "מַיִם",
+    "correctLetter": "B"
+  },
+  {
+    "id": 16,
+    "standard": 4,
+    "rank": 1,
+    "question": "Which of the following sets of words contains only feminine nouns?",
+    "options": [
+      "אִשָּׁה, בַּת, בְּרִית",
+      "תּוֹרָה, מֶלֶךְ, שָׁנָה",
+      "אִישׁ, אִשָּׁה, בַּת",
+      "מִצְוָה, סוּס, פָּרָה"
+    ],
+    "correct": "אִשָּׁה, בַּת, בְּרִית",
+    "correctLetter": "A"
+  },
+  {
+    "id": 17,
+    "standard": 4,
+    "rank": 2,
+    "question": "Which of the following sets of words contains only masculine nouns?",
+    "options": [
+      "גּוֹי, סֵפֶר, אֶבֶן",
+      "אִישׁ, דָּבָר, עִיר",
+      "בַּיִת, מֶלֶךְ, סוּס",
+      "אֶרֶץ, הַר, יוֹם"
+    ],
+    "correct": "בַּיִת, מֶלֶךְ, סוּס",
+    "correctLetter": "C"
+  },
+  {
+    "id": 18,
+    "standard": 4,
+    "rank": 2,
+    "question": "Is the noun אֶרֶץ masculine or feminine?",
+    "options": [
+      "feminine — because it ends in ץ",
+      "feminine — even though it has no ־ָה ending",
+      "masculine — like most place words",
+      "masculine — it has no ־ָה ending"
+    ],
+    "correct": "feminine — even though it has no ־ָה ending",
+    "correctLetter": "B"
+  },
+  {
+    "id": 19,
+    "standard": 4,
+    "rank": 3,
+    "question": "The word לַיְלָה (night) ends in ־ָה. What is its gender?",
+    "options": [
+      "feminine, like שָׁנָה",
+      "masculine, even though it ends in ־ָה",
+      "feminine, because of the ־ָה ending",
+      "it has no fixed gender"
+    ],
+    "correct": "masculine, even though it ends in ־ָה",
+    "correctLetter": "B"
+  },
+  {
+    "id": 20,
+    "standard": 4,
+    "rank": 2,
+    "question": "Which of the following is a masculine singular noun?",
+    "options": [
+      "עִיר",
+      "אֶבֶן",
+      "יוֹם",
+      "בְּרִית"
+    ],
+    "correct": "יוֹם",
+    "correctLetter": "C"
+  },
+  {
+    "id": 21,
+    "standard": 5,
+    "rank": 1,
+    "question": "Which of the following plural nouns is feminine?",
+    "options": [
+      "סוּסִים",
+      "יָמִים",
+      "סוּסוֹת",
+      "מְלָכִים"
+    ],
+    "correct": "סוּסוֹת",
+    "correctLetter": "C"
+  },
+  {
+    "id": 22,
+    "standard": 5,
+    "rank": 3,
+    "question": "The word אָבוֹת (fathers) ends in ־וֹת. Is it masculine or feminine plural?",
+    "options": [
+      "feminine, because it ends in ־וֹת",
+      "feminine, like אִמָּהוֹת",
+      "masculine, even though it ends in ־וֹת",
+      "both, depending on context"
+    ],
+    "correct": "masculine, even though it ends in ־וֹת",
+    "correctLetter": "C"
+  },
+  {
+    "id": 23,
+    "standard": 5,
+    "rank": 3,
+    "question": "The word נָשִׁים (women) ends in ־ִים. What is its gender?",
+    "options": [
+      "masculine, like אֲנָשִׁים",
+      "masculine, because of the ־ִים ending",
+      "feminine, even though it ends in ־ִים",
+      "it is a dual form"
+    ],
+    "correct": "feminine, even though it ends in ־ִים",
+    "correctLetter": "C"
+  },
+  {
+    "id": 24,
+    "standard": 5,
+    "rank": 2,
+    "question": "Which of the following sets contains only feminine plural nouns?",
+    "options": [
+      "נָשִׁים, בָּנִים, שָׁנִים",
+      "אָבוֹת, סוּסוֹת, פָּרוֹת",
+      "מִצְוֹת, סוּסִים, אֲרָצוֹת",
+      "אֲרָצוֹת, מִצְוֹת, בְּהֵמוֹת"
+    ],
+    "correct": "אֲרָצוֹת, מִצְוֹת, בְּהֵמוֹת",
+    "correctLetter": "D"
+  },
+  {
+    "id": 25,
+    "standard": 5,
+    "rank": 2,
+    "question": "Which of the following sets contains only masculine plural nouns?",
+    "options": [
+      "דְּבָרִים, אֲרָצוֹת, בָּנִים",
+      "סוּסִים, פָּרוֹת, יָמִים",
+      "אֲנָשִׁים, נָשִׁים, גּוֹיִם",
+      "מְלָכִים, סוּסִים, יָמִים"
+    ],
+    "correct": "מְלָכִים, סוּסִים, יָמִים",
+    "correctLetter": "D"
+  },
+  {
+    "id": 26,
+    "standard": 6,
+    "rank": 1,
+    "question": "Which one of the following is phrased correctly?",
+    "options": [
+      "אִשָּׁה טוֹב",
+      "עֵצִים גְּדוֹלָה",
+      "בָּנוֹת קְטַנִּים",
+      "סוּס גָּדוֹל"
+    ],
+    "correct": "סוּס גָּדוֹל",
+    "correctLetter": "D"
+  },
+  {
+    "id": 27,
+    "standard": 6,
+    "rank": 2,
+    "question": "Which one of the following is phrased correctly?",
+    "options": [
+      "יָמִים רַבּוֹת",
+      "עִיר גְּדוֹלָה",
+      "אֲבָנִים גְּדוֹלָה",
+      "אֶרֶץ גָּדוֹל"
+    ],
+    "correct": "עִיר גְּדוֹלָה",
+    "correctLetter": "B"
+  },
+  {
+    "id": 28,
+    "standard": 6,
+    "rank": 1,
+    "question": "Which word correctly completes the phrase to mean 'big men'? אֲנָשִׁים ___",
+    "options": [
+      "גָּדוֹל",
+      "גְּדוֹלוֹת",
+      "גְּדוֹלָה",
+      "גְּדוֹלִים"
+    ],
+    "correct": "גְּדוֹלִים",
+    "correctLetter": "D"
+  },
+  {
+    "id": 29,
+    "standard": 6,
+    "rank": 3,
+    "question": "Which one of the following is phrased correctly?",
+    "options": [
+      "אָבוֹת קְדוֹשׁוֹת",
+      "שָׁנִים רַבִּים",
+      "אָבוֹת קְדוֹשִׁים",
+      "נָשִׁים גְּדוֹלִים"
+    ],
+    "correct": "אָבוֹת קְדוֹשִׁים",
+    "correctLetter": "C"
+  },
+  {
+    "id": 30,
+    "standard": 6,
+    "rank": 2,
+    "question": "Which one of the following is phrased correctly?",
+    "options": [
+      "עַיִן רָעִים",
+      "דֶּרֶךְ אֲרֻכִּים",
+      "אֶבֶן גְּדוֹלָה",
+      "אֶבֶן גָּדוֹל"
+    ],
+    "correct": "אֶבֶן גְּדוֹלָה",
+    "correctLetter": "C"
+  },
+  {
+    "id": 31,
+    "standard": 7,
+    "rank": 2,
+    "question": "Which of the following words may be translated as \"from ____\"?",
+    "options": [
+      "כְּאַרְיֵה",
+      "לְפַרְעֹה",
+      "מֵאֶרֶץ",
+      "וְשָׂרָה"
+    ],
+    "correct": "מֵאֶרֶץ",
+    "correctLetter": "C"
+  },
+  {
+    "id": 32,
+    "standard": 7,
+    "rank": 1,
+    "question": "Which of the following words may be translated as \"like (or as) a ____\"?",
+    "options": [
+      "לְדָוִד",
+      "מֵאֵשׁ",
+      "כְּעָפָר",
+      "וְהָעָם"
+    ],
+    "correct": "כְּעָפָר",
+    "correctLetter": "C"
+  },
+  {
+    "id": 33,
+    "standard": 7,
+    "rank": 1,
+    "question": "What is the best translation of the following word? לְמֹשֶׁה",
+    "options": [
+      "to Moshe",
+      "like Moshe",
+      "from Moshe",
+      "and Moshe"
+    ],
+    "correct": "to Moshe",
+    "correctLetter": "A"
+  },
+  {
+    "id": 34,
+    "standard": 7,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks? \"וְהָאָדָם\" יָדַע אֶת־חַוָּה אִשְׁתּוֹ",
+    "options": [
+      "the man",
+      "like the man",
+      "and a man",
+      "and the man"
+    ],
+    "correct": "and the man",
+    "correctLetter": "D"
+  },
+  {
+    "id": 35,
+    "standard": 7,
+    "rank": 1,
+    "question": "Which of the following words may be translated as \"to (or for) a ____\"?",
+    "options": [
+      "וְיוֹסֵף",
+      "לְאֶרֶץ",
+      "מִדָּן",
+      "כְּמֶלֶךְ"
+    ],
+    "correct": "לְאֶרֶץ",
+    "correctLetter": "B"
+  },
+  {
+    "id": 36,
+    "standard": 8,
+    "rank": 1,
+    "question": "Which of the following words may be translated as \"in (or on) the ____\"?",
+    "options": [
+      "בְּעֵינָיו",
+      "בְּאֶרֶץ",
+      "בַּמִּדְבָּר",
+      "בְּיָדוֹ"
+    ],
+    "correct": "בַּמִּדְבָּר",
+    "correctLetter": "C"
+  },
+  {
+    "id": 37,
+    "standard": 8,
+    "rank": 1,
+    "question": "Which of the following words may be translated as \"to the ____\"?",
+    "options": [
+      "לַמֶּלֶךְ",
+      "לְעוֹלָם",
+      "לְמֹשֶׁה",
+      "לְאִישׁ"
+    ],
+    "correct": "לַמֶּלֶךְ",
+    "correctLetter": "A"
+  },
+  {
+    "id": 38,
+    "standard": 8,
+    "rank": 1,
+    "question": "The words בְּ + הַבַּיִת combine to form which one word?",
+    "options": [
+      "בֵּיתַ",
+      "בָּבַּיִת",
+      "בַּבַּיִת",
+      "בְּהַבַּיִת"
+    ],
+    "correct": "בַּבַּיִת",
+    "correctLetter": "C"
+  },
+  {
+    "id": 39,
+    "standard": 8,
+    "rank": 3,
+    "question": "Which is the correct combined form of בְּ + הָאָרֶץ (\"in the land\")?",
+    "options": [
+      "בָּאָרֶץ",
+      "בֶּאָרֶץ",
+      "בְּהָאָרֶץ",
+      "בַּאָרֶץ"
+    ],
+    "correct": "בָּאָרֶץ",
+    "correctLetter": "A"
+  },
+  {
+    "id": 40,
+    "standard": 8,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks? וַיִּשְׁכַּב \"בַּמָּקוֹם\" הַהוּא",
+    "options": [
+      "like the place",
+      "in a place",
+      "from the place",
+      "in the place"
+    ],
+    "correct": "in the place",
+    "correctLetter": "D"
+  },
+  {
+    "id": 41,
+    "standard": 9,
+    "rank": 1,
+    "question": "What is the best translation of the following phrase? דְּבַר ה'",
+    "options": [
+      "Hashem spoke",
+      "the word of Hashem",
+      "Hashem's speaking",
+      "the thing near Hashem"
+    ],
+    "correct": "the word of Hashem",
+    "correctLetter": "B"
+  },
+  {
+    "id": 42,
+    "standard": 9,
+    "rank": 2,
+    "question": "What is the best translation of the following phrase? עֵץ הַחַיִּים",
+    "options": [
+      "the living tree",
+      "a tree of life",
+      "the tree lives",
+      "the tree of life"
+    ],
+    "correct": "the tree of life",
+    "correctLetter": "D"
+  },
+  {
+    "id": 43,
+    "standard": 9,
+    "rank": 2,
+    "question": "How would \"the house of the king\" be written in לְשׁוֹן הַקֹּדֶשׁ?",
+    "options": [
+      "בֵּית הַמֶּלֶךְ",
+      "הַבֵּית מֶלֶךְ",
+      "בַּיִת הַמֶּלֶךְ",
+      "הַבַּיִת הַמֶּלֶךְ"
+    ],
+    "correct": "בֵּית הַמֶּלֶךְ",
+    "correctLetter": "A"
+  },
+  {
+    "id": 44,
+    "standard": 9,
+    "rank": 1,
+    "question": "What is the best translation of the following phrase? בְּנֵי יִשְׂרָאֵל",
+    "options": [
+      "Israel's building",
+      "between Israel",
+      "the sons of Israel",
+      "sons and Israel"
+    ],
+    "correct": "the sons of Israel",
+    "correctLetter": "C"
+  },
+  {
+    "id": 45,
+    "standard": 9,
+    "rank": 1,
+    "question": "How would \"the daughter of Pharaoh\" be written in לְשׁוֹן הַקֹּדֶשׁ?",
+    "options": [
+      "בָּנוֹת פַּרְעֹה",
+      "בַּת פַּרְעֹה",
+      "הַבַּת פַּרְעֹה",
+      "בַּת הַפַּרְעֹה"
+    ],
+    "correct": "בַּת פַּרְעֹה",
+    "correctLetter": "B"
+  },
+  {
+    "id": 46,
+    "standard": 10,
+    "rank": 1,
+    "question": "What is the best translation of the following word? אַרְצוֹ",
+    "options": [
+      "my land",
+      "their land",
+      "his land",
+      "her land"
+    ],
+    "correct": "his land",
+    "correctLetter": "C"
+  },
+  {
+    "id": 47,
+    "standard": 10,
+    "rank": 2,
+    "question": "What is the best translation of the following word? בְּנָהּ",
+    "options": [
+      "my son",
+      "her son",
+      "his son",
+      "their son"
+    ],
+    "correct": "her son",
+    "correctLetter": "B"
+  },
+  {
+    "id": 48,
+    "standard": 10,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks? וְהִתְוַדּוּ אֶת־\"עֲוֹנָם\"",
+    "options": [
+      "her sin",
+      "my sin",
+      "their sin",
+      "his sin"
+    ],
+    "correct": "their sin",
+    "correctLetter": "C"
+  },
+  {
+    "id": 49,
+    "standard": 10,
+    "rank": 3,
+    "question": "What is the best translation of the following word? אָבִיהָ",
+    "options": [
+      "her father",
+      "his father",
+      "their father",
+      "our father"
+    ],
+    "correct": "her father",
+    "correctLetter": "A"
+  },
+  {
+    "id": 50,
+    "standard": 10,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks? וּבְשָׁכְבְּךָ \"בְּבֵיתֶךָ\"",
+    "options": [
+      "her house",
+      "your house",
+      "his house",
+      "my house"
+    ],
+    "correct": "your house",
+    "correctLetter": "B"
+  },
+  {
+    "id": 51,
+    "standard": 11,
+    "rank": 1,
+    "question": "What is the best translation of the following word? אֲבֹתֵיכֶם",
+    "options": [
+      "your fathers",
+      "his fathers",
+      "their fathers",
+      "our fathers"
+    ],
+    "correct": "your fathers",
+    "correctLetter": "A"
+  },
+  {
+    "id": 52,
+    "standard": 11,
+    "rank": 1,
+    "question": "What is the best translation of the following word? יָדֶיךָ",
+    "options": [
+      "your hands",
+      "your hand",
+      "my hands",
+      "his hands"
+    ],
+    "correct": "your hands",
+    "correctLetter": "A"
+  },
+  {
+    "id": 53,
+    "standard": 11,
+    "rank": 2,
+    "question": "What is the best translation of the following word? דְּבָרָיו",
+    "options": [
+      "their words",
+      "my words",
+      "his words",
+      "his word"
+    ],
+    "correct": "his words",
+    "correctLetter": "C"
+  },
+  {
+    "id": 54,
+    "standard": 11,
+    "rank": 2,
+    "question": "What is the best translation of the following word? בְּנֹתֵיכֶם",
+    "options": [
+      "our daughters",
+      "their daughters",
+      "your daughter",
+      "your daughters"
+    ],
+    "correct": "your daughters",
+    "correctLetter": "D"
+  },
+  {
+    "id": 55,
+    "standard": 11,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks? וַיַּרְא יוֹסֵף אֶת־\"אֶחָיו\"",
+    "options": [
+      "their brothers",
+      "their brother",
+      "his brothers",
+      "his brother"
+    ],
+    "correct": "his brothers",
+    "correctLetter": "C"
+  },
+  {
+    "id": 56,
+    "standard": 12,
+    "rank": 1,
+    "question": "What is the best translation of the following phrase? וַיֹּאמֶר ה'",
+    "options": [
+      "and Hashem should say",
+      "and Hashem says",
+      "and Hashem said",
+      "and Hashem will say"
+    ],
+    "correct": "and Hashem said",
+    "correctLetter": "C"
+  },
+  {
+    "id": 57,
+    "standard": 12,
+    "rank": 2,
+    "question": "What is the best translation of the following word? וַתֵּלֶד",
+    "options": [
+      "and she was giving birth",
+      "and she will give birth",
+      "and she gave birth",
+      "and he gave birth"
+    ],
+    "correct": "and she gave birth",
+    "correctLetter": "C"
+  },
+  {
+    "id": 58,
+    "standard": 12,
+    "rank": 1,
+    "question": "What is the best translation of the following word? וַיֵּלֶךְ",
+    "options": [
+      "and he went",
+      "and they went",
+      "and he will go",
+      "and he goes"
+    ],
+    "correct": "and he went",
+    "correctLetter": "A"
+  },
+  {
+    "id": 59,
+    "standard": 12,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks? \"וְאָהַבְתָּ\" אֵת ה' אֱלֹקֶיךָ",
+    "options": [
+      "and he loved",
+      "and you shall love",
+      "and you love",
+      "and you loved"
+    ],
+    "correct": "and you shall love",
+    "correctLetter": "B"
+  },
+  {
+    "id": 60,
+    "standard": 12,
+    "rank": 3,
+    "question": "What is the best translation of the following word? וְהָיָה",
+    "options": [
+      "and it is",
+      "and there was",
+      "and it will be",
+      "and it was"
+    ],
+    "correct": "and it will be",
+    "correctLetter": "C"
+  },
+  {
+    "id": 61,
+    "standard": 13,
+    "rank": 1,
+    "question": "What is the best translation of the following word? מִצְרַיְמָה",
+    "options": [
+      "her Egypt",
+      "to Egypt",
+      "in Egypt",
+      "from Egypt"
+    ],
+    "correct": "to Egypt",
+    "correctLetter": "B"
+  },
+  {
+    "id": 62,
+    "standard": 13,
+    "rank": 1,
+    "question": "What is the best translation of the following word? הַבַּיְתָה",
+    "options": [
+      "from the house",
+      "in the house",
+      "his house",
+      "to the house"
+    ],
+    "correct": "to the house",
+    "correctLetter": "D"
+  },
+  {
+    "id": 63,
+    "standard": 13,
+    "rank": 2,
+    "question": "Which is the best translation of the following word? הַשָּׁמַיְמָה",
+    "options": [
+      "in the heavens",
+      "from the heavens",
+      "to the heavens",
+      "of the heavens"
+    ],
+    "correct": "to the heavens",
+    "correctLetter": "C"
+  },
+  {
+    "id": 64,
+    "standard": 13,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks? וַיֵּצֵא יַעֲקֹב מִבְּאֵר שָׁבַע וַיֵּלֶךְ \"חָרָנָה\"",
+    "options": [
+      "her Charan",
+      "to Charan",
+      "in Charan",
+      "from Charan"
+    ],
+    "correct": "to Charan",
+    "correctLetter": "B"
+  },
+  {
+    "id": 65,
+    "standard": 13,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks? וַיִּשְׁתַּחוּ אַפַּיִם \"אָרְצָה\"",
+    "options": [
+      "to the ground",
+      "her land",
+      "from the ground",
+      "for the land"
+    ],
+    "correct": "to the ground",
+    "correctLetter": "A"
+  },
+  {
+    "id": 66,
+    "standard": 14,
+    "rank": 1,
+    "question": "What is the value of this number? מֵאָה וְעֶשְׂרִים",
+    "options": [
+      "20",
+      "100",
+      "140",
+      "120"
+    ],
+    "correct": "120",
+    "correctLetter": "D"
+  },
+  {
+    "id": 67,
+    "standard": 14,
+    "rank": 1,
+    "question": "What is the value of this number? מֵאָה שָׁנָה וְעֶשְׂרִים שָׁנָה וְשֶׁבַע שָׁנִים",
+    "options": [
+      "127",
+      "172",
+      "121",
+      "137"
+    ],
+    "correct": "127",
+    "correctLetter": "A"
+  },
+  {
+    "id": 68,
+    "standard": 14,
+    "rank": 2,
+    "question": "What is the value of this number? שֵׁשׁ מֵאוֹת אֶלֶף",
+    "options": [
+      "60,000",
+      "600,000",
+      "6,000",
+      "601,000"
+    ],
+    "correct": "600,000",
+    "correctLetter": "B"
+  },
+  {
+    "id": 69,
+    "standard": 14,
+    "rank": 2,
+    "question": "What is the value of this number? שִׁשָּׁה וְאַרְבָּעִים אֶלֶף וַחֲמֵשׁ מֵאוֹת",
+    "options": [
+      "40,650",
+      "64,500",
+      "46,050",
+      "46,500"
+    ],
+    "correct": "46,500",
+    "correctLetter": "D"
+  },
+  {
+    "id": 70,
+    "standard": 14,
+    "rank": 3,
+    "question": "What is the value of this number? שֵׁשׁ מֵאוֹת אֶלֶף וּשְׁלֹשֶׁת אֲלָפִים וַחֲמֵשׁ מֵאוֹת וַחֲמִשִּׁים",
+    "options": [
+      "653,000",
+      "603,550",
+      "630,550",
+      "603,505"
+    ],
+    "correct": "603,550",
+    "correctLetter": "B"
+  },
+  {
+    "id": 71,
+    "standard": 15,
+    "rank": 1,
+    "question": "What is the best translation of the following word? בָּרָא",
+    "options": [
+      "I created",
+      "they created",
+      "he will create",
+      "he created"
+    ],
+    "correct": "he created",
+    "correctLetter": "D"
+  },
+  {
+    "id": 72,
+    "standard": 15,
+    "rank": 1,
+    "question": "What is the best translation of the following word? אָכְלוּ",
+    "options": [
+      "we ate",
+      "they ate",
+      "they will eat",
+      "he ate"
+    ],
+    "correct": "they ate",
+    "correctLetter": "B"
+  },
+  {
+    "id": 73,
+    "standard": 15,
+    "rank": 2,
+    "question": "What is the best translation of the following word? נָתַתִּי",
+    "options": [
+      "I gave",
+      "he gave",
+      "you gave",
+      "we gave"
+    ],
+    "correct": "I gave",
+    "correctLetter": "A"
+  },
+  {
+    "id": 74,
+    "standard": 15,
+    "rank": 1,
+    "question": "What is the best translation of the following word? יָלְדָה",
+    "options": [
+      "he gave birth",
+      "they gave birth",
+      "you gave birth",
+      "she gave birth"
+    ],
+    "correct": "she gave birth",
+    "correctLetter": "D"
+  },
+  {
+    "id": 75,
+    "standard": 15,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks? וַתֹּאמֶר ... מַה־זֹּאת \"עָשִׂית\"",
+    "options": [
+      "I did",
+      "you (f.) did",
+      "you (m.) did",
+      "she did"
+    ],
+    "correct": "you (f.) did",
+    "correctLetter": "B"
+  },
+  {
+    "id": 76,
+    "standard": 16,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nוְרִבְקָה \"אֹהֶבֶת\" אֶת־יַעֲקֹב",
+    "options": [
+      "she loved",
+      "she will love",
+      "she loves",
+      "love!"
+    ],
+    "correct": "she loves",
+    "correctLetter": "C"
+  },
+  {
+    "id": 77,
+    "standard": 16,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nוְהוּא \"יֹשֵׁב\" פֶּתַח־הָאֹהֶל כְּחֹם הַיּוֹם",
+    "options": [
+      "he is sitting",
+      "he will sit",
+      "he sat",
+      "sit!"
+    ],
+    "correct": "he is sitting",
+    "correctLetter": "A"
+  },
+  {
+    "id": 78,
+    "standard": 16,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nכִּי \"יֹדֵעַ\" אֱלֹהִים כִּי בְּיוֹם אֲכָלְכֶם מִמֶּנּוּ",
+    "options": [
+      "God will know",
+      "God knows",
+      "know!",
+      "God knew"
+    ],
+    "correct": "God knows",
+    "correctLetter": "B"
+  },
+  {
+    "id": 79,
+    "standard": 16,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\nוּבְנוֹת אַנְשֵׁי הָעִיר \"יֹצְאֹת\" לִשְׁאֹב מָיִם",
+    "options": [
+      "they will go out",
+      "they are going out",
+      "go out!",
+      "they went out"
+    ],
+    "correct": "they are going out",
+    "correctLetter": "B"
+  },
+  {
+    "id": 80,
+    "standard": 16,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks (use the context)?\nעוֹדֶנּוּ מְדַבֵּר עִמָּם וְרָחֵל \"בָּאָה\" עִם־הַצֹּאן אֲשֶׁר לְאָבִיהָ",
+    "options": [
+      "she came",
+      "she is coming",
+      "she will come",
+      "come!"
+    ],
+    "correct": "she is coming",
+    "correctLetter": "B"
+  },
+  {
+    "id": 81,
+    "standard": 17,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nבְּזֵעַת אַפֶּיךָ \"תֹּאכַל\" לֶחֶם",
+    "options": [
+      "you will eat",
+      "you eat",
+      "you ate",
+      "eat!"
+    ],
+    "correct": "you will eat",
+    "correctLetter": "A"
+  },
+  {
+    "id": 82,
+    "standard": 17,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nוְאֶל־אִישֵׁךְ תְּשׁוּקָתֵךְ וְהוּא \"יִמְשָׁל\" בָּךְ",
+    "options": [
+      "he ruled",
+      "he will rule",
+      "he rules",
+      "rule!"
+    ],
+    "correct": "he will rule",
+    "correctLetter": "B"
+  },
+  {
+    "id": 83,
+    "standard": 17,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\nוַיֹּאמֶר אֱלֹהִים \"נַעֲשֶׂה\" אָדָם בְּצַלְמֵנוּ",
+    "options": [
+      "make!",
+      "we made",
+      "we will make",
+      "we make"
+    ],
+    "correct": "we will make",
+    "correctLetter": "C"
+  },
+  {
+    "id": 84,
+    "standard": 17,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\nאֵרֲדָה־נָּא \"וְאֶרְאֶה\" הַכְּצַעֲקָתָהּ הַבָּאָה אֵלַי",
+    "options": [
+      "I will see",
+      "see!",
+      "I see",
+      "I saw"
+    ],
+    "correct": "I will see",
+    "correctLetter": "A"
+  },
+  {
+    "id": 85,
+    "standard": 17,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks?\nכִּי בְּיוֹם אֲכָלְךָ מִמֶּנּוּ מוֹת \"תָּמוּת\"",
+    "options": [
+      "you will die",
+      "you died",
+      "you die",
+      "die!"
+    ],
+    "correct": "you will die",
+    "correctLetter": "A"
+  },
+  {
+    "id": 86,
+    "standard": 18,
+    "rank": 1,
+    "question": "What is the best translation of the word in quotation marks?\nוַיֹּאמֶר ה' אֶל־אַבְרָם \"לֶךְ\" לְךָ מֵאַרְצְךָ",
+    "options": [
+      "he went",
+      "you will go",
+      "go!",
+      "he is going"
+    ],
+    "correct": "go!",
+    "correctLetter": "C"
+  },
+  {
+    "id": 87,
+    "standard": 18,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\nקַח\"־נָא אֶת־בִּנְךָ אֶת־יְחִידְךָ",
+    "options": [
+      "he took",
+      "take!",
+      "taking",
+      "you will take"
+    ],
+    "correct": "take!",
+    "correctLetter": "B"
+  },
+  {
+    "id": 88,
+    "standard": 18,
+    "rank": 2,
+    "question": "The word in quotation marks is a command. What is its best translation?\nרְדוּ\"־שָׁמָּה וְשִׁבְרוּ־לָנוּ מִשָּׁם",
+    "options": [
+      "they went down",
+      "we will go down",
+      "go down! (to a group)",
+      "going down"
+    ],
+    "correct": "go down! (to a group)",
+    "correctLetter": "C"
+  },
+  {
+    "id": 89,
+    "standard": 18,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\n\"קוּם\" הִתְהַלֵּךְ בָּאָרֶץ לְאָרְכָּהּ וּלְרָחְבָּהּ",
+    "options": [
+      "he will arise",
+      "arise!",
+      "arising",
+      "he arose"
+    ],
+    "correct": "arise!",
+    "correctLetter": "B"
+  },
+  {
+    "id": 90,
+    "standard": 18,
+    "rank": 3,
+    "question": "What is the best translation of the word in quotation marks?\nוַיֹּאמֶר לָהּ מַלְאַךְ ה' \"שׁוּבִי\" אֶל־גְּבִרְתֵּךְ",
+    "options": [
+      "she returned",
+      "you (f.) will return",
+      "returning",
+      "return! (to a female)"
+    ],
+    "correct": "return! (to a female)",
+    "correctLetter": "D"
+  },
+  {
+    "id": 91,
+    "standard": 19,
+    "rank": 1,
+    "question": "Who is the subject (the one doing the action) in this פָּסוּק?\nוַיִּקְרָא אֱלֹהִים לָאוֹר יוֹם וְלַחֹשֶׁךְ קָרָא לָיְלָה",
+    "options": [
+      "יוֹם",
+      "הַחֹשֶׁךְ",
+      "אֱלֹהִים",
+      "הָאוֹר"
+    ],
+    "correct": "אֱלֹהִים",
+    "correctLetter": "C"
+  },
+  {
+    "id": 93,
+    "standard": 19,
+    "rank": 2,
+    "question": "Who is the subject of the verb \"וַתֹּאכַל\" (she ate) in this פָּסוּק?\nוַתֵּרֶא הָאִשָּׁה כִּי טוֹב הָעֵץ לְמַאֲכָל וַתִּקַּח מִפִּרְיוֹ וַתֹּאכַל וַתִּתֵּן גַּם־לְאִישָׁהּ עִמָּהּ וַיֹּאכַל",
+    "options": [
+      "הָאִשָּׁה",
+      "הָעֵץ",
+      "אִישָׁהּ",
+      "הַפְּרִי"
+    ],
+    "correct": "הָאִשָּׁה",
+    "correctLetter": "A"
+  },
+  {
+    "id": 96,
+    "standard": 20,
+    "rank": 2,
+    "question": "In this פָּסוּק, what is the best translation of the word in quotation marks?\nוַיִּמְצָאָהּ מַלְאַךְ ה' עַל־\"עֵין\" הַמַּיִם בַּמִּדְבָּר",
+    "options": [
+      "spring / fountain",
+      "eye",
+      "face",
+      "color"
+    ],
+    "correct": "spring / fountain",
+    "correctLetter": "A"
+  },
+  {
+    "id": 97,
+    "standard": 20,
+    "rank": 2,
+    "question": "What is the most likely translation of the word in quotation marks?\nוְהִנֵּה סֻלָּם מֻצָּב אַרְצָה \"וְרֹאשׁוֹ\" מַגִּיעַ הַשָּׁמָיְמָה",
+    "options": [
+      "and its top",
+      "and its chief",
+      "and its head",
+      "and its beginning"
+    ],
+    "correct": "and its top",
+    "correctLetter": "A"
+  },
+  {
+    "id": 98,
+    "standard": 20,
+    "rank": 1,
+    "question": "What does the word in quotation marks mean in this פָּסוּק?\nוַיְהִי כָל־הָאָרֶץ \"שָׂפָה\" אֶחָת וּדְבָרִים אֲחָדִים",
+    "options": [
+      "lip",
+      "language",
+      "mustache",
+      "shore / edge"
+    ],
+    "correct": "language",
+    "correctLetter": "B"
+  },
+  {
+    "id": 99,
+    "standard": 20,
+    "rank": 2,
+    "question": "What is the best translation of the word in quotation marks?\nכִּי בְיִצְחָק יִקָּרֵא לְךָ \"זָרַע\"",
+    "options": [
+      "arm",
+      "seed (of a plant)",
+      "sowing",
+      "offspring / descendants"
+    ],
+    "correct": "offspring / descendants",
+    "correctLetter": "D"
+  },
+  {
+    "id": 100,
+    "standard": 20,
+    "rank": 3,
+    "question": "What is the most likely translation of the word in quotation marks?\nוַיְהִי רָעָב בָּאָרֶץ... כִּי־\"כָבֵד\" הָרָעָב בָּאָרֶץ",
+    "options": [
+      "heavy / severe",
+      "glory",
+      "honored",
+      "liver"
+    ],
+    "correct": "heavy / severe",
+    "correctLetter": "A"
+  },
+  {
+    "id": 102,
+    "standard": 21,
+    "rank": 1,
+    "question": "According to the words of this פָּסוּק, for how long did the woman hide the baby?\nוַתַּהַר הָאִשָּׁה וַתֵּלֶד בֵּן וַתֵּרֶא אֹתוֹ כִּי־טוֹב הוּא וַתִּצְפְּנֵהוּ שְׁלֹשָׁה יְרָחִים׃",
+    "options": [
+      "three months",
+      "three years",
+      "three days",
+      "forty days"
+    ],
+    "correct": "three months",
+    "correctLetter": "A"
+  },
+  {
+    "id": 104,
+    "standard": 21,
+    "rank": 2,
+    "question": "According to the words of this פָּסוּק, what does the Torah tell us about מֹשֶׁה?\nוְהָאִישׁ מֹשֶׁה עָנָו מְאֹד מִכֹּל הָאָדָם אֲשֶׁר עַל־פְּנֵי הָאֲדָמָה׃",
+    "options": [
+      "He was exceedingly humble, more than any person on earth",
+      "He was the strongest of all the people on earth",
+      "He was the oldest man on the face of the earth",
+      "He was exceedingly wealthy, more than any person on earth"
+    ],
+    "correct": "He was exceedingly humble, more than any person on earth",
+    "correctLetter": "A"
+  },
+  {
+    "id": 105,
+    "standard": 21,
+    "rank": 2,
+    "question": "According to the words of this פָּסוּק, what did אַבְרָהָם take in his hand?\nוַיִּשְׁלַח אַבְרָהָם אֶת־יָדוֹ וַיִּקַּח אֶת־הַמַּאֲכֶלֶת לִשְׁחֹט אֶת־בְּנוֹ׃",
+    "options": [
+      "the ram",
+      "the fire",
+      "the knife",
+      "the wood"
+    ],
+    "correct": "the knife",
+    "correctLetter": "C"
+  },
+  {
+    "id": 106,
+    "standard": 22,
+    "rank": 1,
+    "question": "What happened in this פָּסוּק?\nוַיְכַל אֱלֹקִים בַּיּוֹם הַשְּׁבִיעִי מְלַאכְתּוֹ אֲשֶׁר עָשָׂה וַיִּשְׁבֹּת בַּיּוֹם הַשְּׁבִיעִי מִכָּל־מְלַאכְתּוֹ אֲשֶׁר עָשָׂה׃",
+    "options": [
+      "God commanded people to rest on the seventh day",
+      "God continued working on the sixth day without resting",
+      "God finished His work and rested on the seventh day from all the work He had done",
+      "God began creating the world on the first day"
+    ],
+    "correct": "God finished His work and rested on the seventh day from all the work He had done",
+    "correctLetter": "C"
+  },
+  {
+    "id": 107,
+    "standard": 22,
+    "rank": 2,
+    "question": "What is being described in this פָּסוּק?\nוַיֵּרָא מַלְאַךְ ה' אֵלָיו בְּלַבַּת־אֵשׁ מִתּוֹךְ הַסְּנֶה וַיַּרְא וְהִנֵּה הַסְּנֶה בֹּעֵר בָּאֵשׁ וְהַסְּנֶה אֵינֶנּוּ אֻכָּל׃",
+    "options": [
+      "An angel set the bush on fire and it burned down to ashes",
+      "A man lit a fire inside the bush in order to bring an offering",
+      "An angel appeared in a flame of fire from within the bush; the bush was burning but was not being consumed",
+      "A fire spread from the bush and consumed the entire field"
+    ],
+    "correct": "An angel appeared in a flame of fire from within the bush; the bush was burning but was not being consumed",
+    "correctLetter": "C"
+  },
+  {
+    "id": 108,
+    "standard": 22,
+    "rank": 2,
+    "question": "What happened in this פָּסוּק?\nוַתָּבֹא אֵלָיו הַיּוֹנָה לְעֵת עֶרֶב וְהִנֵּה עֲלֵה־זַיִת טָרָף בְּפִיהָ וַיֵּדַע נֹחַ כִּי־קַלּוּ הַמַּיִם מֵעַל הָאָרֶץ׃",
+    "options": [
+      "A raven returned with an olive leaf, and Noach knew the waters had completely dried up",
+      "Yonah planted an olive branch to thank Hashem for the waters going down",
+      "The dove flew off and never returned, so Noach knew the flood was over",
+      "The dove returned in the evening with an olive leaf in its mouth, and Noach knew the waters had lessened"
+    ],
+    "correct": "The dove returned in the evening with an olive leaf in its mouth, and Noach knew the waters had lessened",
+    "correctLetter": "D"
+  },
+  {
+    "id": 109,
+    "standard": 22,
+    "rank": 1,
+    "question": "What is being described in this פָּסוּק?\nוַיָּמָת שָׁם מֹשֶׁה עֶבֶד־ה' בְּאֶרֶץ מוֹאָב עַל־פִּי ה'׃",
+    "options": [
+      "Moshe left the land of Moav alive, by the command of Hashem",
+      "Moshe, who was a servant in Midyan, was buried by the people of Moav against the will of Hashem",
+      "Moshe, the servant of Hashem, died there in the land of Moav, by the word of Hashem",
+      "Moshe, the servant of Hashem, conquered the land of Moav"
+    ],
+    "correct": "Moshe, the servant of Hashem, died there in the land of Moav, by the word of Hashem",
+    "correctLetter": "C"
+  },
+  {
+    "id": 111,
+    "standard": 23,
+    "rank": 2,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית א:א): בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ\n\nרַשִׁ\"י (Hebrew): **בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.\n\nרַשִׁ\"י (English translation): Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.\n\nWhat lesson can be derived from this Rashi?",
+    "options": [
+      "The mitzvah of Rosh Chodesh is more important than the story of Creation.",
+      "Since Hashem created the entire world, He has the right to give any land to any nation He chooses — which is why Eretz Yisrael rightfully belongs to the Jewish people.",
+      "The Torah must always be studied in the exact order it was written.",
+      "The entire world was created only for the sake of the Jewish people."
+    ],
+    "correct": "Since Hashem created the entire world, He has the right to give any land to any nation He chooses — which is why Eretz Yisrael rightfully belongs to the Jewish people.",
+    "correctLetter": "B",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית א:א",
+    "groupKey": "בְּרֵאשִׁית א:א",
+    "groupOrder": 1,
+    "orderWithinGroup": 3
+  },
+  {
+    "id": 112,
+    "standard": 23,
+    "rank": 2,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית ג:ט): וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה\n\nרַשִׁ\"י (Hebrew): **אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.\n\nרַשִׁ\"י (English translation): Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.\n\nWhat lesson can be derived from this Rashi?",
+    "options": [
+      "Adam should have answered immediately instead of staying silent.",
+      "A person should never attempt to hide from responsibility for their actions.",
+      "When confronting someone about a mistake, it's better to ease into the conversation gently rather than starting with a sudden accusation.",
+      "Hashem does not actually know everything that happens in the world."
+    ],
+    "correct": "When confronting someone about a mistake, it's better to ease into the conversation gently rather than starting with a sudden accusation.",
+    "correctLetter": "C",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית ג:ט",
+    "groupKey": "בְּרֵאשִׁית ג:ט",
+    "groupOrder": 2,
+    "orderWithinGroup": 3
+  },
+  {
+    "id": 113,
+    "standard": 24,
+    "rank": 2,
+    "question": "Which of the following, written in כְּתָב רַשִׁ\"י (Rashi script), is the same word as דָּבָר?",
+    "options": [
+      "רָבָר",
+      "רָבָד",
+      "דָּבָר",
+      "דָּבָד"
+    ],
+    "correct": "דָּבָר",
+    "correctLetter": "C",
+    "promptText": "דָּבָר",
+    "displayMode": "rashi_options"
+  },
+  {
+    "id": 114,
+    "standard": 24,
+    "rank": 3,
+    "question": "Which of the following, written in כְּתָב רַשִׁ\"י (Rashi script), is the same word as לַיְלָה?",
+    "options": [
+      "לַיְטָה",
+      "טַיְטָה",
+      "לַיְלָה",
+      "טַיְלָה"
+    ],
+    "correct": "לַיְלָה",
+    "correctLetter": "C",
+    "promptText": "לַיְלָה",
+    "displayMode": "rashi_options"
+  },
+  {
+    "id": 115,
+    "standard": 24,
+    "rank": 3,
+    "question": "Which of the following, written in כְּתָב רַשִׁ\"י (Rashi script), is the same word as הִנֵּה?",
+    "options": [
+      "הִנֵּח",
+      "חִנֵּח",
+      "חִנֵּה",
+      "הִנֵּה"
+    ],
+    "correct": "הִנֵּה",
+    "correctLetter": "D",
+    "promptText": "הִנֵּה",
+    "displayMode": "rashi_options"
+  },
+  {
+    "id": 116,
+    "standard": 24,
+    "rank": 2,
+    "question": "Which of the following, written in כְּתָב רַשִׁ\"י (Rashi script), is the same word as כָּבֵד?",
+    "options": [
+      "כָּבֵד",
+      "בָּכֵד",
+      "בָּבֵד",
+      "כָּכֵד"
+    ],
+    "correct": "כָּבֵד",
+    "correctLetter": "A",
+    "promptText": "כָּבֵד",
+    "displayMode": "rashi_options"
+  },
+  {
+    "id": 117,
+    "standard": 24,
+    "rank": 3,
+    "question": "Which of the following, written in כְּתָב רַשִׁ\"י (Rashi script), is the same word as עֵץ?",
+    "options": [
+      "צֵץ",
+      "עֵץ",
+      "עֵע",
+      "צֵע"
+    ],
+    "correct": "עֵץ",
+    "correctLetter": "B",
+    "promptText": "עֵץ",
+    "displayMode": "rashi_options"
+  },
+  {
+    "id": 118,
+    "standard": 25,
+    "rank": 1,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית א:א): בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ\n\nרַשִׁ\"י (Hebrew): **בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.\n\nרַשִׁ\"י (English translation): Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.\n\nWhat is the דִּבּוּר הַמַּתְחִיל of this Rashi?",
+    "options": [
+      "וְהָאָרֶץ הָיְתָה תֹהוּ וָבֹהוּ",
+      "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר",
+      "בְּרֵאשִׁית בָּרָא",
+      "אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ"
+    ],
+    "correct": "בְּרֵאשִׁית בָּרָא",
+    "correctLetter": "C",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית א:א",
+    "groupKey": "בְּרֵאשִׁית א:א",
+    "groupOrder": 1,
+    "orderWithinGroup": 1
+  },
+  {
+    "id": 119,
+    "standard": 25,
+    "rank": 1,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית ג:ט): וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה\n\nרַשִׁ\"י (Hebrew): **אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.\n\nרַשִׁ\"י (English translation): Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.\n\nWhat is the דִּבּוּר הַמַּתְחִיל of this Rashi?",
+    "options": [
+      "וַיִּקְרָא ה' אֱלֹקִים",
+      "אַיֶּכָּה",
+      "אֶל הָאָדָם",
+      "וַיֹּאמֶר לוֹ"
+    ],
+    "correct": "אַיֶּכָּה",
+    "correctLetter": "B",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית ג:ט",
+    "groupKey": "בְּרֵאשִׁית ג:ט",
+    "groupOrder": 2,
+    "orderWithinGroup": 1
+  },
+  {
+    "id": 120,
+    "standard": 26,
+    "rank": 2,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית א:א): בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ\n\nרַשִׁ\"י (Hebrew): **בְּרֵאשִׁית בָּרָא.** אָמַר רַבִּי יִצְחָק: לֹא הָיָה צָרִיךְ לְהַתְחִיל אֶת הַתּוֹרָה אֶלָּא מֵ\"הַחֹדֶשׁ הַזֶּה לָכֶם\" שֶׁהִיא מִצְוָה רִאשׁוֹנָה שֶׁנִּצְטַוּוּ בָּהּ יִשְׂרָאֵל... אֶלָּא כֹּחַ מַעֲשָׂיו הִגִּיד לְעַמּוֹ, שֶׁאִם יֹאמְרוּ אֻמּוֹת הָעוֹלָם לְיִשְׂרָאֵל \"לִסְטִים אַתֶּם\", הֵם אוֹמְרִים לָהֶם: כָּל הָאָרֶץ שֶׁלְּהַקָּדוֹשׁ בָּרוּךְ הוּא הִיא, הוּא בְּרָאָהּ וּנְתָנָהּ לַאֲשֶׁר יָשָׁר בְּעֵינָיו.\n\nרַשִׁ\"י (English translation): Rabbi Yitzchak said: the Torah did not need to begin with Creation — it could have started with the first mitzvah given to the Jewish people (establishing the new month, in Shemot 12). It opens with Creation instead to make known Hashem's power: if the nations of the world ever accuse the Jewish people of stealing the land of Canaan, the response is that the whole world belongs to Hashem — He created it, and He gave this land to whichever nation He saw fit.\n\nWhich choice best describes the question Rashi is answering here?",
+    "options": [
+      "Why does the Torah call the first day \"day one\" instead of \"the first day\"?",
+      "Why did Hashem create the heavens before the earth?",
+      "Why does the Torah begin with the story of Creation instead of with the first mitzvah given to Klal Yisrael?",
+      "Why did Hashem choose to create the world through speech rather than some other way?"
+    ],
+    "correct": "Why does the Torah begin with the story of Creation instead of with the first mitzvah given to Klal Yisrael?",
+    "correctLetter": "C",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית א:א",
+    "groupKey": "בְּרֵאשִׁית א:א",
+    "groupOrder": 1,
+    "orderWithinGroup": 2
+  },
+  {
+    "id": 121,
+    "standard": 26,
+    "rank": 2,
+    "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (בְּרֵאשִׁית ג:ט): וַיִּקְרָא ה' אֱלֹקִים אֶל הָאָדָם וַיֹּאמֶר לוֹ אַיֶּכָּה\n\nרַשִׁ\"י (Hebrew): **אַיֶּכָּה.** יוֹדֵעַ הָיָה הֵיכָן הוּא, אֶלָּא לִיכָּנֵס עִמּוֹ בִּדְבָרִים, שֶׁלֹּא יְהֵא נִבְהָל לְהָשִׁיב אִם יְעַנְשֵׁהוּ פִּתְאוֹם.\n\nרַשִׁ\"י (English translation): Hashem knew exactly where Adam was. He asked \"Where are you?\" in order to ease into a conversation with him gently, so that Adam would not be so startled that he couldn't answer — the way he might have been if Hashem had confronted or punished him suddenly and without warning.\n\nWhich choice best describes the question Rashi is answering here?",
+    "options": [
+      "Since Hashem obviously knew exactly where Adam was, why did He ask him \"where are you\"?",
+      "Why does the pasuk say Hashem \"called\" rather than that He \"saw\" Adam?",
+      "Why did Hashem wait until evening to speak to Adam?",
+      "Why did Adam hide from Hashem in the garden?"
+    ],
+    "correct": "Since Hashem obviously knew exactly where Adam was, why did He ask him \"where are you\"?",
+    "correctLetter": "A",
+    "fixed": true,
+    "pasukRef": "בְּרֵאשִׁית ג:ט",
+    "groupKey": "בְּרֵאשִׁית ג:ט",
+    "groupOrder": 2,
+    "orderWithinGroup": 2
+  },
+  {
+    "id": 122,
+    "standard": 27,
+    "rank": 1,
+    "question": "What is the numerical value (גִּימַטְרִיָּה) of this word? נֹחַ",
+    "options": [
+      "55",
+      "58",
+      "48",
+      "68"
+    ],
+    "correct": "58",
+    "correctLetter": "B"
+  },
+  {
+    "id": 123,
+    "standard": 27,
+    "rank": 1,
+    "question": "What is the numerical value (גִּימַטְרִיָּה) of this word? מֹשֶׁה",
+    "options": [
+      "345",
+      "340",
+      "335",
+      "355"
+    ],
+    "correct": "345",
+    "correctLetter": "A"
+  },
+  {
+    "id": 124,
+    "standard": 27,
+    "rank": 2,
+    "question": "What is the numerical value (גִּימַטְרִיָּה) of this word? תּוֹרָה",
+    "options": [
+      "621",
+      "616",
+      "605",
+      "611"
+    ],
+    "correct": "611",
+    "correctLetter": "D"
+  },
+  {
+    "id": 125,
+    "standard": 27,
+    "rank": 2,
+    "question": "What is the numerical value (גִּימַטְרִיָּה) of this name? אַבְרָהָם",
+    "options": [
+      "248",
+      "243",
+      "258",
+      "253"
+    ],
+    "correct": "248",
+    "correctLetter": "A"
+  },
+  {
+    "id": 126,
+    "standard": 27,
+    "rank": 3,
+    "question": "What is the numerical value (גִּימַטְרִיָּה) of this phrase? עַם יִשְׂרָאֵל",
+    "options": [
+      "661",
+      "646",
+      "651",
+      "641"
+    ],
+    "correct": "651",
+    "correctLetter": "C"
+  },
+  {
+    "id": 127,
+    "standard": 28,
+    "rank": 1,
+    "question": "Which text is the actual pasuk of בְּרֵאשִׁית א:א?",
+    "options": [
+      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
+      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+      "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
+      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר"
+    ],
+    "correct": "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+    "correctLetter": "B"
+  },
+  {
+    "id": 128,
+    "standard": 28,
+    "rank": 3,
+    "question": "Which text is the actual pasuk of בְּרֵאשִׁית א:ג?",
+    "options": [
+      "וַיַּרְא אֱלֹקִים אֶת־הָאוֹר כִּי־טוֹב וַיַּבְדֵּל אֱלֹקִים בֵּין הָאוֹר וּבֵין הַחֹשֶׁךְ",
+      "וְהָאָרֶץ הָיְתָה תֹהוּ וָבֹהוּ וְחֹשֶׁךְ עַל־פְּנֵי תְהוֹם וְרוּחַ אֱלֹקִים מְרַחֶפֶת עַל־פְּנֵי הַמָּיִם",
+      "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
+      "וַיִּקְרָא אֱלֹקִים לָאוֹר יוֹם וְלַחֹשֶׁךְ קָרָא לָיְלָה וַיְהִי־עֶרֶב וַיְהִי־בֹקֶר יוֹם אֶחָד"
+    ],
+    "correct": "וַיֹּאמֶר אֱלֹקִים יְהִי אוֹר וַיְהִי אוֹר",
+    "correctLetter": "C"
+  },
+  {
+    "id": 129,
+    "standard": 28,
+    "rank": 2,
+    "question": "Which text is the actual pasuk of שְׁמוֹת א:א?",
+    "options": [
+      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ",
+      "וַיָּקָם מֶלֶךְ־חָדָשׁ עַל־מִצְרָיִם אֲשֶׁר לֹא־יָדַע אֶת־יוֹסֵף",
+      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
+      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ"
+    ],
+    "correct": "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
+    "correctLetter": "D"
+  },
+  {
+    "id": 130,
+    "standard": 28,
+    "rank": 2,
+    "question": "Which text is the actual pasuk of דְּבָרִים ו:ד?",
+    "options": [
+      "אָנֹכִי ה' אֱלֹקֶיךָ אֲשֶׁר הוֹצֵאתִיךָ מֵאֶרֶץ מִצְרַיִם מִבֵּית עֲבָדִים",
+      "שְׁמַע יִשְׂרָאֵל ה' אֱלֹקֵינוּ ה' אֶחָד",
+      "וְאָהַבְתָּ אֵת ה' אֱלֹקֶיךָ בְּכָל־לְבָבְךָ וּבְכָל־נַפְשְׁךָ וּבְכָל־מְאֹדֶךָ",
+      "וְשִׁנַּנְתָּם לְבָנֶיךָ וְדִבַּרְתָּ בָּם בְּשִׁבְתְּךָ בְּבֵיתֶךָ וּבְלֶכְתְּךָ בַדֶּרֶךְ וּבְשָׁכְבְּךָ וּבְקוּמֶךָ"
+    ],
+    "correct": "שְׁמַע יִשְׂרָאֵל ה' אֱלֹקֵינוּ ה' אֶחָד",
+    "correctLetter": "B"
+  },
+  {
+    "id": 131,
+    "standard": 28,
+    "rank": 2,
+    "question": "Which text is the actual pasuk of וַיִּקְרָא א:א?",
+    "options": [
+      "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
+      "וַיְדַבֵּר ה' אֶל־מֹשֶׁה בְּמִדְבַּר סִינַי בְּאֹהֶל מוֹעֵד בְּאֶחָד לַחֹדֶשׁ הַשֵּׁנִי בַּשָּׁנָה הַשֵּׁנִית לְצֵאתָם מֵאֶרֶץ מִצְרַיִם לֵאמֹר",
+      "וְאֵלֶּה שְׁמוֹת בְּנֵי יִשְׂרָאֵל הַבָּאִים מִצְרָיְמָה אֵת יַעֲקֹב אִישׁ וּבֵיתוֹ בָּאוּ",
+      "בְּרֵאשִׁית בָּרָא אֱלֹקִים אֵת הַשָּׁמַיִם וְאֵת הָאָרֶץ"
+    ],
+    "correct": "וַיִּקְרָא אֶל־מֹשֶׁה וַיְדַבֵּר ה' אֵלָיו מֵאֹהֶל מוֹעֵד לֵאמֹר",
+    "correctLetter": "A"
+  },
+  {
+    "id": 132,
+    "standard": 29,
+    "rank": 1,
+    "question": "Which of the following words contains a גְּנוּבָה פַּתַח (\"stolen patach\")?",
+    "options": [
+      "אֶרֶץ",
+      "תּוֹרָה",
+      "מֶלֶךְ",
+      "נֹחַ"
+    ],
+    "correct": "נֹחַ",
+    "correctLetter": "D"
+  },
+  {
+    "id": 133,
+    "standard": 29,
+    "rank": 1,
+    "question": "Which of the following words contains a גְּנוּבָה פַּתַח (\"stolen patach\")?",
+    "options": [
+      "שָׁלוֹם",
+      "רוּחַ",
+      "בַּיִת",
+      "יָד"
+    ],
+    "correct": "רוּחַ",
+    "correctLetter": "B"
+  },
+  {
+    "id": 134,
+    "standard": 29,
+    "rank": 2,
+    "question": "Which of the following words contains a גְּנוּבָה פַּתַח (\"stolen patach\")?",
+    "options": [
+      "פֶּתַח",
+      "תַּפּוּחַ",
+      "נָהָר",
+      "שָׁמַיִם"
+    ],
+    "correct": "תַּפּוּחַ",
+    "correctLetter": "B"
+  },
+  {
+    "id": 135,
+    "standard": 29,
+    "rank": 2,
+    "question": "Which of the following words contains a גְּנוּבָה פַּתַח (\"stolen patach\")?",
+    "options": [
+      "מִזְבֵּחַ",
+      "מֶלֶךְ",
+      "לֶחֶם",
+      "זֶרַע"
+    ],
+    "correct": "מִזְבֵּחַ",
+    "correctLetter": "A"
+  },
+  {
+    "id": 136,
+    "standard": 29,
+    "rank": 3,
+    "question": "Which of the following words contains a גְּנוּבָה פַּתַח (\"stolen patach\")?",
+    "options": [
+      "רֶגַע",
+      "מֶלֶךְ",
+      "מָשִׁיחַ",
+      "פֶּתַח"
+    ],
+    "correct": "מָשִׁיחַ",
+    "correctLetter": "C"
+  },
+  {
+    "id": 137,
+    "standard": 30,
+    "rank": 1,
+    "question": "How many עֲלִיּוֹת are there in the Shabbat morning Torah reading (not counting מַפְטִיר)?",
+    "options": [
+      "3",
+      "5",
+      "7",
+      "8"
+    ],
+    "correct": "7",
+    "correctLetter": "C"
+  },
+  {
+    "id": 138,
+    "standard": 30,
+    "rank": 1,
+    "question": "What do we call a person who is called up to the Torah for an עֲלִיָּה?",
+    "options": [
+      "בַּעַל קוֹרֵא",
+      "גַּבַּאי",
+      "שַׁמָּשׁ",
+      "עוֹלֶה"
+    ],
+    "correct": "עוֹלֶה",
+    "correctLetter": "D"
+  },
+  {
+    "id": 139,
+    "standard": 30,
+    "rank": 2,
+    "question": "Which choice lists the first three עֲלִיּוֹת in the correct order?",
+    "options": [
+      "רִאשׁוֹן, שֵׁנִי, שְׁלִישִׁי",
+      "רִאשׁוֹן, שְׁלִישִׁי, שֵׁנִי",
+      "שְׁלִישִׁי, שֵׁנִי, רִאשׁוֹן",
+      "שֵׁנִי, רִאשׁוֹן, שְׁלִישִׁי"
+    ],
+    "correct": "רִאשׁוֹן, שֵׁנִי, שְׁלִישִׁי",
+    "correctLetter": "A"
+  },
+  {
+    "id": 140,
+    "standard": 30,
+    "rank": 2,
+    "question": "On Shabbat morning, what is the additional (8th) עֲלִיָּה called, read after the seven?",
+    "options": [
+      "אַחֲרוֹן",
+      "הַגְבָּהָה",
+      "מַפְטִיר",
+      "שְׁמִינִי"
+    ],
+    "correct": "מַפְטִיר",
+    "correctLetter": "C"
+  },
+  {
+    "id": 141,
+    "standard": 30,
+    "rank": 3,
+    "question": "How many עֲלִיּוֹת are read on a regular weekday morning (Monday and Thursday) Torah reading?",
+    "options": [
+      "4",
+      "7",
+      "5",
+      "3"
+    ],
+    "correct": "3",
+    "correctLetter": "D"
+  }
+];
+
+function startSkillsIntro() { hide('hubMenuArea'); show('skillsIntroArea'); }
+
+function beginSkills() {
+    state.skillsHistory = [];
+    state.skillsIndex = 0;
+    const FIXED_STANDARDS = new Set([23, 25, 26]);
+    const randomPicks = [];
+    for (let s = 1; s <= 30; s++) {
+        if (FIXED_STANDARDS.has(s)) continue;
+        const pool = SKILLS_BANK.filter(q => q.standard === s);
+        if (pool.length === 0) continue;
+        randomPicks.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+    const shuffledRandom = [...randomPicks].sort(() => Math.random() - 0.5);
+    const fixedBlock = SKILLS_BANK.filter(q => q.fixed)
+        .sort((a, b) => (a.groupOrder - b.groupOrder) || (a.orderWithinGroup - b.orderWithinGroup));
+    state.skillsQueue = [...shuffledRandom, ...fixedBlock];
+    hide('skillsIntroArea'); show('quizArea'); show('quizProgress');
+    runSkillsNext();
+}
+
+function runSkillsNext() {
+    const total = state.skillsQueue.length;
+    if (state.skillsIndex >= total) return finishSkills();
+    document.getElementById('progressBar').style.width = (state.skillsIndex / total * 100) + '%';
+    const q = state.skillsQueue[state.skillsIndex];
+    renderChoiceQuestion(q.question, q.options, (picked) => window.ansSkills(picked, q), {
+        richText: true,
+        rashiOptions: q.displayMode === 'rashi_options'
+    });
+}
+
+window.ansSkills = (picked, q) => {
+    const isCorrect = (picked === q.correct);
+    state.skillsHistory.push({
+        id: q.id, standard: q.standard, category: SKILLS_STANDARD_CATEGORY(q.standard),
+        question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped"
+    });
+    state.skillsIndex++;
+    runSkillsNext();
+};
+
+function finishSkills() {
+    hide('quizArea'); hide('quizProgress');
+    document.getElementById('resultsDesc').innerHTML =
+        `Submitting your answers...<br><span style="font-size:0.85rem;color:#a6998a;">Please do not exit the app or close this window.</span>`;
+    show('resultsArea');
+
+    const categories = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills'];
+    const categoryScores = {};
+    categories.forEach(c => {
+        const rows = state.skillsHistory.filter(h => h.category === c);
+        categoryScores[c] = { correct: rows.filter(h => h.correct).length, total: rows.length };
+    });
+
+    // FETCH TO EXTERNAL APPS SCRIPT URL - same teacher-only pattern as Chumash
+    // Knowledge: an AI recommendation is generated server-side from the
+    // per-category scores and the missed questions, but nothing score-related
+    // is shown to the student here.
+    isUploading = true;
+    fetch(GAS_WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+            action: "saveSkills",
+            payload: { name: state.name, categoryScores: categoryScores, history: state.skillsHistory }
+        }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(data => {
+        isUploading = false;
+        if (data.success) {
+            document.getElementById('resultsDesc').innerHTML = `Chumash Skills Check-In logged successfully!`;
+        } else {
+            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
+        }
+    })
+    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
+}
 
 function startAudio() { hide('hubMenuArea'); show('audioArea'); }
 
