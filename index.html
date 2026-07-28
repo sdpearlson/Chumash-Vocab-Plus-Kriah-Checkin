@@ -179,7 +179,7 @@ document.getElementById('nameSubmitBtn').addEventListener('click', () => {
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
 
-// Official JSAT Level 8 Chumash Vocabulary list (281 words), reviewed and
+// Official Chumash Vocabulary list (281 words), reviewed and
 // re-tiered by the teacher.
 const TOTAL_QUESTIONS = 15;
 const BLOCK_SIZE = 5; // questions per difficulty block
@@ -662,7 +662,7 @@ function finishVocab() {
     .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
 }
 
-// Official JSAT Level 8 Chumash Knowledge (Parsha) question bank (268 facts,
+// Official Chumash Knowledge (Parsha) question bank (268 facts,
 // Bereishit through Devarim), reviewed by the teacher. `sefer` is the canonical
 // English tag used by the app to pull 5 random questions per sefer.
 const KNOWLEDGE_SEFARIM = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
@@ -1007,19 +1007,54 @@ function finishKnowledge() {
     .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
 }
 
-// Official JSAT Level 8 Chumash Skills question bank (134 questions covering
-// all 30 official standards), reviewed and edited by the teacher. Standards
-// 23/25/26 are the fixed Rashi section (2 pesukim, "fixed": true) and are
-// always ALL included together (not drawn 1-per-standard like the rest of the
-// bank), grouped by pasuk via groupOrder/orderWithinGroup so a student always
-// answers all 3 questions about one Rashi before moving to the next. Standard
-// 24 (Rashi script recognition) renders its 4 options in the Rashi font via
-// displayMode: 'rashi_options' (prompt word stays in regular print).
+// Official Chumash Skills question bank (123 questions covering 28 of the 30
+// official standards — 2 were removed entirely after teacher review),
+// reviewed and edited by the teacher. Standards 23/25/26 are the fixed Rashi
+// section (2 pesukim, "fixed": true); one pasuk's 3 questions (not both) are
+// drawn per attempt via groupOrder/orderWithinGroup, grouped together instead
+// of interleaved with the rest. Standard 24 (Rashi script recognition)
+// renders its 4 options in the Rashi font via displayMode: 'rashi_options'
+// (prompt word stays in regular print).
 const SKILLS_STANDARD_CATEGORY = (standard) => {
     if (standard <= 18) return 'Decoding the Text';
     if (standard <= 23) return 'Understanding the Text';
     if (standard <= 26) return 'Rashi Skills';
     return 'Additional Skills';
+};
+// Short descriptive name for each of the 30 official standards, used so
+// teacher-facing output (the results sheet, the AI recommendation) can name
+// the actual skill instead of a bare "Standard 23". Mirrors STANDARD_LABELS
+// in generate_jsat_skills.py — keep the two in sync if a standard's wording
+// changes.
+const SKILLS_STANDARD_LABEL = {
+    1: "Identify the שֹׁרֶשׁ of a word",
+    2: "Identify the שֹׁרֶשׁ when a root letter is missing/altered",
+    3: "Identify a noun as singular or plural",
+    4: "Identify a singular noun's gender",
+    5: "Identify a plural noun's gender",
+    6: "Noun-adjective agreement (number & gender)",
+    7: "Translate prefixes (וְ/כְּ/לְ/מִ) on nouns",
+    9: "Translate two nouns in סְמִיכוּת",
+    10: "Translate possessive suffixes on singular nouns",
+    11: "Translate possessive suffixes on plural nouns",
+    12: "Translate a word with a וָא\"ו הַהִפּוּךְ",
+    13: "Identify the ה\"א הַמְּגַמָּה (directional heh)",
+    14: "Translate Hebrew numbers 1-999,999",
+    15: "Translate a פָּעַל/קַל verb, past tense",
+    16: "Translate a פָּעַל/קַל verb, present tense",
+    17: "Translate a פָּעַל/קַל verb, future tense",
+    18: "Recognize a פָּעַל command (צִוּוּי)",
+    19: "Identify subject/object in a פָּסוּק",
+    20: "Word meaning from context clues",
+    21: "Answer using לְשׁוֹן הַפָּסוּק",
+    22: "Comprehend an unseen פָּסוּק",
+    23: "Apply Chumash/Rashi to real life (הַשְׁקָפָה)",
+    24: "Recognize letters/words in רַשִׁ\"י script",
+    25: "Identify a Rashi's דִּבּוּר הַמַּתְחִיל",
+    26: "Identify שְׁאֵלַת רַשִׁ\"י (Rashi's question)",
+    27: "Compute גִּימַטְרִיָּה of letters/words",
+    29: "Recognize a גְּנוּבָה פַּתַח",
+    30: "Identify עֲלִיּוֹת and their use",
 };
 const SKILLS_BANK = [
   {
@@ -2857,7 +2892,8 @@ function runSkillsNext() {
 window.ansSkills = (picked, q) => {
     const isCorrect = (picked === q.correct);
     state.skillsHistory.push({
-        id: q.id, standard: q.standard, category: SKILLS_STANDARD_CATEGORY(q.standard),
+        id: q.id, standard: q.standard, standardLabel: SKILLS_STANDARD_LABEL[q.standard] || ('Standard ' + q.standard),
+        category: SKILLS_STANDARD_CATEGORY(q.standard),
         question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped"
     });
     state.skillsIndex++;
