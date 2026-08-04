@@ -71,6 +71,7 @@
         <button class="intake-choice" onclick="startVocab()">Vocabulary Check-In</button>
         <button class="intake-choice" onclick="startKnowledgeIntro()">Chumash Knowledge Check-In</button>
         <button class="intake-choice" onclick="startSkillsIntro()">Chumash Skills Check-In</button>
+        <button class="intake-choice" onclick="startNaviIntro()">Navi Knowledge Check-In</button>
         <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
     </div>
     <div id="selfEvalArea" class="hidden">
@@ -89,6 +90,11 @@
     <div id="skillsIntroArea" class="hidden">
         <p>You'll get one question for each Chumash Skills standard, plus a short Rashi section on one pasuk (3 questions, grouped together at the end).</p>
         <button class="intake-choice" onclick="beginSkills()">Begin</button>
+        <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
+    </div>
+    <div id="naviIntroArea" class="hidden">
+        <p>You'll get 15 questions covering Sefer Yehoshua, Sefer Shoftim, Sefer Shmuel I, Sefer Shmuel II, Megillat Esther, Megillat Rut, and Sefer Yonah.</p>
+        <button class="intake-choice" onclick="beginNavi()">Begin</button>
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="quizProgress" class="hidden"><div class="intake-progress-bar" id="progressBar"></div></div>
@@ -113,7 +119,8 @@ const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2
 const state = {
     name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0,
     knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: [],
-    skillsQueue: [], skillsIndex: 0, skillsHistory: []
+    skillsQueue: [], skillsIndex: 0, skillsHistory: [],
+    naviQueue: [], naviIndex: 0, naviHistory: []
 };
 let mediaRecorder;
 let audioChunks = [];
@@ -149,13 +156,14 @@ function goToHub() {
         activeStream.getTracks().forEach(track => track.stop());
         activeStream = null;
     }
-    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('quizArea'); hide('quizProgress');
+    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('naviIntroArea'); hide('quizArea'); hide('quizProgress');
     hide('audioArea'); hide('resultsArea');
 
     // Reset per-attempt state so a fresh vocab/knowledge/skills run or recording starts clean.
     state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
     state.knowledgeQueue = []; state.knowledgeIndex = 0; state.knowledgeHistory = [];
     state.skillsQueue = []; state.skillsIndex = 0; state.skillsHistory = [];
+    state.naviQueue = []; state.naviIndex = 0; state.naviHistory = [];
     const recordBtn = document.getElementById('recordBtn');
     recordBtn.disabled = false;
     recordBtn.innerText = "🎤 Start Recording";
@@ -1025,6 +1033,147 @@ function finishKnowledge() {
             // for now this section stays teacher-facing only, on the Knowledge
             // Results tab of the Google Sheet.
             document.getElementById('resultsDesc').innerHTML = `Chumash Knowledge Check-In logged successfully!`;
+        } else {
+            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
+        }
+    })
+    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
+}
+
+// Official Navi Knowledge question bank (58 questions), authored from the
+// standards document's Navi Knowledge scope (specific perakim per sefer,
+// plus Megillat Esther/Rut and Sefer Yonah in full) and reviewed/edited by
+// the teacher.
+const NAVI_BANK = [
+  { num: 1, sefer: "Yehoshua", question: "יְהוֹשֻׁעַ became the leader of Bnei Yisrael immediately after the death of this person:", options: ["מֹשֶׁה", "אַהֲרֹן", "אֶלְעָזָר הַכֹּהֵן", "כָּלֵב בֶּן יְפֻנֶּה"], correct: "מֹשֶׁה" },
+  { num: 2, sefer: "Yehoshua", question: "In perek 1 יְהוֹשֻׁעַ reminds these tribes that their soldiers have to fight in the front, even though they are living on the eastern side of the יַרְדֵּן:", options: ["Reuven, Gad, and half of Menashe", "Yehuda, Binyamin and half of Shimon", "Dan, Menashe, and half of Naftali", "Efraim, Zevulun, and half of Menashe"], correct: "Reuven, Gad, and half of Menashe" },
+  { num: 3, sefer: "Yehoshua", question: "This woman of יְרִיחוֹ hid the two spies that יְהוֹשֻׁעַ sent:", options: ["רָחָב", "יָעֵל אֵשֶׁת חֶבֶר הַקֵּינִי", "דְּבוֹרָה הַנְּבִיאָה", "דְּלִילָה"], correct: "רָחָב" },
+  { num: 4, sefer: "Yehoshua", question: "The waters of the יַרְדֵּן stopped flowing when the כֹּהֲנִים stepped into the river carrying this:", options: ["אֲרוֹן הַבְּרִית", "הַמְּנוֹרָה", "מִזְבַּח הַזָּהָב", "שֻׁלְחַן לֶחֶם הַפָּנִים"], correct: "אֲרוֹן הַבְּרִית" },
+  { num: 5, sefer: "Yehoshua", question: "Bnei Yisrael set up the twelve stones taken out of the יַרְדֵּן at this place, where they camped after crossing:", options: ["גִּלְגָּל", "שִׁטִּים", "שִׁילֹה", "בֵּית אֵל"], correct: "גִּלְגָּל" },
+  { num: 6, sefer: "Yehoshua", question: "How many times did they walk around יְרִיחוֹ on the last day?", options: ["שֶׁבַע פְּעָמִים (7 times)", "פַּעַם אַחַת (1 time)", "שָׁלֹשׁ פְּעָמִים (3 times)", "שְׁתֵּים עֶשְׂרֵה פְּעָמִים (12 times)"], correct: "שֶׁבַע פְּעָמִים (7 times)" },
+  { num: 7, sefer: "Yehoshua", question: "The seven כֹּהֲנִים walked in front of the אֲרוֹן around יְרִיחוֹ carrying these:", options: ["שׁוֹפְרוֹת הַיּוֹבְלִים (ram's horn shofarot)", "חֲצוֹצְרוֹת כֶּסֶף (silver trumpets)", "כִּנּוֹרוֹת (harps)", "תֻּפִּים (drums)"], correct: "שׁוֹפְרוֹת הַיּוֹבְלִים (ram's horn shofarot)" },
+  { num: 8, sefer: "Yehoshua", question: "Who stole forbidden loot from Yericho?", options: ["Achan", "Datan", "Kalev", "Korach"], correct: "Achan" },
+  { num: 9, sefer: "Yehoshua", question: "What job did יְהוֹשֻׁעַ give the גִּבְעוֹנִים after they tricked their way into Bnei Yisrael?", options: ["חוֹטְבֵי עֵצִים וְשֹׁאֲבֵי מַיִם (woodcutters and water drawers)", "שׁוֹמְרֵי הַשְּׁעָרִים (gatekeepers)", "מְשׁוֹרְרִים (singers)", "שׁוֹפְטִים (judges)"], correct: "חוֹטְבֵי עֵצִים וְשֹׁאֲבֵי מַיִם (woodcutters and water drawers)" },
+  { num: 10, sefer: "Shoftim", question: "This נְבִיאָה judged Bnei Yisrael and led the war against סִיסְרָא:", options: ["דְּבוֹרָה", "יָעֵל אֵשֶׁת חֶבֶר הַקֵּינִי", "אֵשֶׁת מָנוֹחַ", "דְּלִילָה"], correct: "דְּבוֹרָה" },
+  { num: 11, sefer: "Shoftim", question: "יָעֵל killed סִיסְרָא in her tent using this:", options: ["יְתַד הָאֹהֶל (a tent peg)", "חֶרֶב (a sword)", "חֵץ וְקֶשֶׁת (a bow and arrow)", "אֶבֶן גְּדוֹלָה (a large stone)"], correct: "יְתַד הָאֹהֶל (a tent peg)" },
+  { num: 12, sefer: "Shoftim", question: "What did יָעֵל give סִיסְרָא to put him to sleep?", options: ["Wine", "Meat", "Herbs", "Milk"], correct: "Milk" },
+  { num: 13, sefer: "Shoftim", question: "The מַלְאָךְ told אֵשֶׁת מָנוֹחַ to drink no wine and eat nothing tamei, because her son would be this from the birth:", options: ["נָזִיר", "כֹּהֵן גָּדוֹל", "לֵוִי", "נָבִיא"], correct: "נָזִיר" },
+  { num: 14, sefer: "Shoftim", question: "Shimshon was known for having long:", options: ["hair", "nails", "eyelashes", "legs"], correct: "hair" },
+  { num: 15, sefer: "Shmuel I", question: "Who was Shmuel HaNavi's father?", options: ["אֶלְקָנָה", "עֵלִי", "יִשַׁי", "קִישׁ"], correct: "אֶלְקָנָה" },
+  { num: 16, sefer: "Shmuel I", question: "אֶלְקָנָה had a second wife, who had children while חַנָּה was still childless. Her name was:", options: ["פְּנִינָה", "מֵרַב", "רִצְפָּה בַּת אַיָּה", "אֲבִיגַיִל"], correct: "פְּנִינָה" },
+  { num: 17, sefer: "Shmuel I", question: "Who did שְׁמוּאֵל run to when Hashem first called to him?", options: ["עֵלִי", "אֶלְקָנָה", "חָפְנִי", "פִּינְחָס"], correct: "עֵלִי" },
+  { num: 18, sefer: "Shmuel I", question: "What was the name of the god of the Plishtim to whom the stolen Aron was brought?", options: ["דָּגוֹן", "בַּעַל", "עַשְׁתֹּרֶת", "מוֹלֶךְ"], correct: "דָּגוֹן" },
+  { num: 19, sefer: "Shmuel I", question: "The wagon carrying the Aron back from the Plishtim arrived in this Israelite city:", options: ["בֵּית שֶׁמֶשׁ", "קִרְיַת יְעָרִים", "שִׁילֹה", "גִּבְעָה"], correct: "בֵּית שֶׁמֶשׁ" },
+  { num: 20, sefer: "Shmuel I", question: "Bnei Yisrael were upset with the corruption of Shmuel's sons, so they asked Shmuel for what?", options: ["A new Mishkan", "A navi (prophet)", "A king", "New shoftim (judges)"], correct: "A king" },
+  { num: 21, sefer: "Shmuel I", question: "שָׁאוּל first met שְׁמוּאֵל while he was searching for these lost animals belonging to his father קִישׁ:", options: ["אֲתוֹנוֹת (donkeys)", "כְּבָשִׂים (sheep)", "גְּמַלִּים (camels)", "פָּרוֹת (cows)"], correct: "אֲתוֹנוֹת (donkeys)" },
+  { num: 22, sefer: "Shmuel I", question: "When שָׁאוּל was chosen as king by lot at מִצְפָּה, the people could not find him at first because he was hiding:", options: ["בֵּין הַכֵּלִים (with the luggage)", "בַּמְּעָרָה (in a cave)", "בַּשָּׂדֶה (in the field)", "עַל הַגָּג (on the roof)"], correct: "בֵּין הַכֵּלִים (with the luggage)" },
+  { num: 23, sefer: "Shmuel I", question: "In what city did David Hamelech grow up?", options: ["בֵּית לֶחֶם", "רָמָה", "נֹב", "גִּבְעָה"], correct: "בֵּית לֶחֶם" },
+  { num: 24, sefer: "Shmuel I", question: "When the bad spirit came upon שָׁאוּל, דָּוִד was brought to play this instrument to calm him:", options: ["כִּנּוֹר harp", "חָלִיל flute", "תֹּף drums", "שׁוֹפָר shofar"], correct: "כִּנּוֹר harp" },
+  { num: 25, sefer: "Shmuel I", question: "דָּוִד struck down גָּלְיָת with which weapon?", options: ["קֶלַע sling", "חֲנִית spear", "קֶשֶׁת bow", "חֶרֶב sword"], correct: "קֶלַע sling" },
+  { num: 26, sefer: "Shmuel I", question: "This daughter of שָׁאוּל was given to דָּוִד as a wife:", options: ["מִיכַל", "מֵרַב", "רִצְפָּה בַּת אַיָּה", "פְּנִינָה"], correct: "מִיכַל" },
+  { num: 27, sefer: "Shmuel I", question: "When דָּוִד fled to אֲחִימֶלֶךְ the kohen in נֹב, he was given bread and also this weapon:", options: ["חֶרֶב גָּלְיָת", "חֲנִית שָׁאוּל", "קֶשֶׁת יְהוֹנָתָן", "חֶרֶב אַבְנֵר"], correct: "חֶרֶב גָּלְיָת" },
+  { num: 28, sefer: "Shmuel I", question: "One son of אֲחִימֶלֶךְ escaped the destruction of נֹב and fled to דָּוִד. His name was:", options: ["אֶבְיָתָר", "דּוֹאֵג הָאֲדֹמִי", "אֲחִיטוּב", "יוֹנָדָב"], correct: "אֶבְיָתָר" },
+  { num: 29, sefer: "Shmuel I", question: "In the cave, instead of killing Shaul, David quietly cut off:", options: ["the corner of his coat", "his sandal strap", "a piece of his hair", "the end of his belt"], correct: "the corner of his coat" },
+  { num: 30, sefer: "Shmuel I", question: "At שָׁאוּל's request, the woman of עֵין דּוֹר (בַּעֲלַת אוֹב) brought up the spirit of:", options: ["שְׁמוּאֵל", "עֵלִי", "יְהוֹנָתָן", "אֶלְקָנָה"], correct: "שְׁמוּאֵל" },
+  { num: 31, sefer: "Shmuel I", question: "This son of שָׁאוּל, who had been דָּוִד's closest friend, fell together with him in the battle on הַר הַגִּלְבֹּעַ:", options: ["יְהוֹנָתָן", "אַבְנֵר בֶּן נֵר", "אִישׁ בֹּשֶׁת", "דּוֹאֵג הָאֲדֹמִי"], correct: "יְהוֹנָתָן" },
+  { num: 32, sefer: "Shmuel II", question: "What was the nationality of the man who told David about Shaul's death?", options: ["עֲמָלֵק", "מוֹאָב", "פְּלִשְׁתִּים", "אֱדוֹם"], correct: "עֲמָלֵק" },
+  { num: 33, sefer: "Shmuel II", question: "After the death of Shaul, David was anointed king over the tribe of יְהוּדָה in what city?", options: ["חֶבְרוֹן", "יְרוּשָׁלַיִם", "גִּבְעוֹן", "מַחֲנַיִם"], correct: "חֶבְרוֹן" },
+  { num: 34, sefer: "Shmuel II", question: "At the battle by the pool of גִּבְעוֹן, who killed Asahel?", options: ["אַבְנֵר בֶּן נֵר", "אִישׁ בֹּשֶׁת בֶּן שָׁאוּל", "יוֹאָב בֶּן צְרוּיָה", "אֲבִישַׁי בֶּן צְרוּיָה"], correct: "אַבְנֵר בֶּן נֵר" },
+  { num: 35, sefer: "Shmuel II", question: "After אַבְנֵר בֶּן נֵר joined דָּוִד, who killed him in חֶבְרוֹן out of revenge?", options: ["יוֹאָב בֶּן צְרוּיָה", "אִישׁ בֹּשֶׁת בֶּן שָׁאוּל", "פַּלְטִיאֵל בֶּן לַיִשׁ", "דָּוִד הַמֶּלֶךְ"], correct: "יוֹאָב בֶּן צְרוּיָה" },
+  { num: 36, sefer: "Shmuel II", question: "Before he would meet with Avner, David demanded the return of which woman?", options: ["מִיכַל", "מֵרַב", "רִצְפָּה בַּת אַיָּה", "אֲבִיגַיִל"], correct: "מִיכַל" },
+  { num: 37, sefer: "Shmuel II", question: "Where was דָּוִד when he first saw בַּת שֶׁבַע?", options: ["on the roof of the palace", "the gate of the city", "on the walls of Yerushalayim", "in the garden of the King"], correct: "on the roof of the palace" },
+  { num: 38, sefer: "Shmuel II", question: "In the parable that נָתָן הַנָּבִיא told דָּוִד, what did the rich man take away from the poor man?", options: ["a sheep", "a cow", "a vineyard", "a donkey"], correct: "a sheep" },
+  { num: 39, sefer: "Shmuel II", question: "What name did נָתָן הַנָּבִיא call שְׁלֹמֹה when he was born?", options: ["יְדִידְיָה", "אֲבִיָּה", "עֲדָיָה", "נְתַנְאֵל"], correct: "יְדִידְיָה" },
+  { num: 40, sefer: "Shmuel II", question: "Who killed אַמְנוֹן because of what he did to תָּמָר?", options: ["אֲחִיתֹפֶל", "שְׁלֹמֹה", "דָּוִד", "אַבְשָׁלוֹם"], correct: "אַבְשָׁלוֹם" },
+  { num: 41, sefer: "Shmuel II", question: "How did אַמְנוֹן trick תָּמָר into coming to him?", options: ["he asked her to bring his armor", "he pretended to be sick", "he said he had a letter for her", "he insulted her father"], correct: "he pretended to be sick" },
+  { num: 42, sefer: "Shmuel II", question: "Which of David's trusted advisors joined אַבְשָׁלוֹם's rebellion?", options: ["אֲחִיתֹפֶל", "חוּשַׁי הָאַרְכִּי", "אִתַּי הַגִּתִּי", "צָדוֹק הַכֹּהֵן"], correct: "אֲחִיתֹפֶל" },
+  { num: 43, sefer: "Shmuel II", question: "During the battle in the forest of Efraim, how did אַבְשָׁלוֹם become trapped?", options: ["his hair got stuck in a tree", "his mule tripped over a branch", "his legs were crippled when he fell", "he hid in a cave that collapsed"], correct: "his hair got stuck in a tree" },
+  { num: 44, sefer: "Shmuel II", question: "Who killed Avshalom, even though David commanded him to go easy on his son?", options: ["יוֹאָב בֶּן צְרוּיָה", "אֲבִישַׁי בֶּן צְרוּיָה", "אִתַּי הַגִּתִּי", "אֲחִימַעַץ בֶּן צָדוֹק"], correct: "יוֹאָב בֶּן צְרוּיָה" },
+  { num: 45, sefer: "Megillat Esther", question: "At the great feast in שׁוּשָׁן, this queen refused the king's command to appear before him and lost her position as queen:", options: ["וַשְׁתִּי", "אֶסְתֵּר", "זֶרֶשׁ", "מִיכַל"], correct: "וַשְׁתִּי" },
+  { num: 46, sefer: "Megillat Esther", question: "Which pair of the king's servants plotted to kill אֲחַשְׁוֵרוֹשׁ, a plot that מָרְדְּכַי uncovered and reported?", options: ["בִּגְתָן וָתֶרֶשׁ", "הֵגַי וְשַׁעַשְׂגַז", "מְהוּמָן וּבִזְּתָא", "כַּרְשְׁנָא וְשֵׁתָר"], correct: "בִּגְתָן וָתֶרֶשׁ" },
+  { num: 47, sefer: "Megillat Esther", question: "הָמָן cast the פּוּר (lot), and it fell on this month as the month to destroy the Jews:", options: ["אֲדָר", "נִיסָן", "סִיוָן", "טֵבֵת"], correct: "אֲדָר" },
+  { num: 48, sefer: "Megillat Esther", question: "On the advice of his wife זֶרֶשׁ, הָמָן had a gallows fifty amot high built for this person:", options: ["מָרְדְּכַי", "אֲחַשְׁוֵרוֹשׁ", "חַרְבוֹנָה", "בִּגְתָן"], correct: "מָרְדְּכַי" },
+  { num: 49, sefer: "Megillat Esther", question: "On the night the king could not sleep, he had this brought and read before him, which is how he remembered what מָרְדְּכַי had done for him:", options: ["סֵפֶר הַזִּכְרֹנוֹת (the book of records)", "אִגֶּרֶת הַפּוּרִים (the letter of Purim)", "סֵפֶר הַתּוֹרָה (the Torah scroll)", "דָּתֵי פָרַס וּמָדַי (the laws of Persia and Media)"], correct: "סֵפֶר הַזִּכְרֹנוֹת (the book of records)" },
+  { num: 50, sefer: "Megillat Esther", question: "How many sons did Haman have?", options: ["3", "5", "7", "10"], correct: "10" },
+  { num: 51, sefer: "Megillat Rut", question: "Who was רוּת's mother-in-law, who she insisted on following back to בֵּית לֶחֶם?", options: ["נָעֳמִי", "עָרְפָּה", "חַנָּה", "מִיכַל"], correct: "נָעֳמִי" },
+  { num: 52, sefer: "Megillat Rut", question: "רוּת gathered grain in the field of which wealthy relative?", options: ["בֹּעַז", "מַחְלוֹן", "כִּלְיוֹן", "יִשַׁי"], correct: "בֹּעַז" },
+  { num: 53, sefer: "Megillat Rut", question: "Who was the great-grandson of רוּת and בֹּעַז?", options: ["מֹשֶׁה רַבֵּינוּ", "אֵלִיָּהוּ הַנָּבִיא", "דָּוִד הַמֶּלֶךְ", "שָׁאוּל הַמֶּלֶךְ"], correct: "דָּוִד הַמֶּלֶךְ" },
+  { num: 54, sefer: "Sefer Yonah", question: "Where did Hashem tell יוֹנָה to go?", options: ["תַּרְשִׁישׁ", "יָפוֹ", "נִינְוֵה", "אַשְׁקְלוֹן"], correct: "נִינְוֵה" },
+  { num: 55, sefer: "Sefer Yonah", question: "Instead of listening to Hashem, יוֹנָה gets on a ship going where?", options: ["תַּרְשִׁישׁ", "יָפוֹ", "נִינְוֵה", "אַשְׁקְלוֹן"], correct: "תַּרְשִׁישׁ" },
+  { num: 56, sefer: "Sefer Yonah", question: "After the sailors threw him into the sea, what swallowed יוֹנָה?", options: ["דָּג גָּדוֹל (a great fish)", "נֶשֶׁר גָּדוֹל (a giant eagle)", "תַּנִּין (a sea monster)", "נָחָשׁ גָּדוֹל (a great sea-snake)"], correct: "דָּג גָּדוֹל (a great fish)" },
+  { num: 57, sefer: "Sefer Yonah", question: "What announcement did יוֹנָה make when he got to his destination?", options: ["The Jews of Shushan can defend themselves from Haman", "The Babylonians will destroy the Mikdash on Tisha B'av", "Ninveh will be destroyed in 40 days", "David did wrong when he took Bat Sheva from Uriah"], correct: "Ninveh will be destroyed in 40 days" },
+  { num: 58, sefer: "Sefer Yonah", question: "After יוֹנָה sat down outside the city, Hashem made this plant grow up to give him shade:", options: ["קִיקָיוֹן (a gourd plant)", "שִׁטָּה (acacia)", "אֵזוֹב (hyssop)", "סְנֶה (thornbush)"], correct: "קִיקָיוֹן (a gourd plant)" },
+];
+
+// Draw counts per sefer for the live check-in, matching the official
+// standards document's approximate distribution (15 questions total):
+// Yehoshua 2, Shoftim 1, Shmuel I 5, Shmuel II 4, Megillat Esther 1,
+// Megillat Rut 1, Sefer Yonah 1. The pool above has more items per sefer
+// than the draw count so the questions vary between attempts.
+const NAVI_DRAW_COUNTS = { 'Yehoshua': 2, 'Shoftim': 1, 'Shmuel I': 5, 'Shmuel II': 4, 'Megillat Esther': 1, 'Megillat Rut': 1, 'Sefer Yonah': 1 };
+const NAVI_SEFARIM = Object.keys(NAVI_DRAW_COUNTS);
+
+function startNaviIntro() { hide('hubMenuArea'); show('naviIntroArea'); }
+
+function beginNavi() {
+    state.naviHistory = [];
+    state.naviIndex = 0;
+    state.naviQueue = [];
+    NAVI_SEFARIM.forEach(sefer => {
+        const pool = NAVI_BANK.filter(q => q.sefer === sefer);
+        const picks = [...pool].sort(() => Math.random() - 0.5).slice(0, NAVI_DRAW_COUNTS[sefer]);
+        state.naviQueue.push(...picks);
+    });
+    hide('naviIntroArea'); show('quizArea'); show('quizProgress');
+    runNaviNext();
+}
+
+function runNaviNext() {
+    const total = state.naviQueue.length;
+    if (state.naviIndex >= total) return finishNavi();
+    document.getElementById('progressBar').style.width = (state.naviIndex/total*100)+'%';
+    const q = state.naviQueue[state.naviIndex];
+    renderChoiceQuestion(q.question, q.options, (picked) => window.ansNavi(picked, q), { hebrew: false });
+}
+
+window.ansNavi = (picked, q) => {
+    const isCorrect = (picked === q.correct);
+    state.naviHistory.push({ num: q.num, sefer: q.sefer, question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped" });
+    state.naviIndex++;
+    runNaviNext();
+};
+
+function finishNavi() {
+    hide('quizArea'); hide('quizProgress');
+    document.getElementById('resultsDesc').innerHTML =
+        `Submitting your answers...<br><span style="font-size:0.85rem;color:#a6998a;">Please do not exit the app or close this window.</span>`;
+    show('resultsArea');
+
+    const seferScores = {};
+    NAVI_SEFARIM.forEach(s => {
+        const rows = state.naviHistory.filter(h => h.sefer === s);
+        seferScores[s] = { correct: rows.filter(h => h.correct).length, total: rows.length };
+    });
+
+    // FETCH TO EXTERNAL APPS SCRIPT URL - same pattern as Knowledge/Skills:
+    // the server asks Gemini for a short recommendation based on per-sefer
+    // scores and which questions were missed.
+    isUploading = true;
+    fetch(GAS_WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+            action: "saveNavi",
+            payload: { name: state.name, seferScores: seferScores, history: state.naviHistory }
+        }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(data => {
+        isUploading = false;
+        if (data.success) {
+            // Teacher-facing only, same as Knowledge/Skills — scores and the
+            // AI recommendation live on the Navi Results tab of the Sheet.
+            document.getElementById('resultsDesc').innerHTML = `Navi Knowledge Check-In logged successfully!`;
         } else {
             document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
         }
