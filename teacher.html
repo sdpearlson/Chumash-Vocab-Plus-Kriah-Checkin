@@ -99,7 +99,12 @@
         <button class="tab-btn" data-tab="history">Student History</button>
         <button class="tab-btn" data-tab="averages">Class Averages</button>
       </div>
-      <button class="btn-secondary" id="refreshBtn">&#8635; Refresh</button>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <select id="classFilterSelect" class="text-input" style="margin-bottom:0; width:auto; display:none;">
+          <option value="">All Classes</option>
+        </select>
+        <button class="btn-secondary" id="refreshBtn">&#8635; Refresh</button>
+      </div>
     </div>
 
     <div id="loadingArea" class="loading">Loading results...</div>
@@ -250,6 +255,56 @@ function allStudentNames() {
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+// Returns the currently-selected course object from dashboardData.rosterByCourse,
+// or null if the filter is set to "All Classes" or no course matches.
+function getSelectedCourse() {
+    const filter = el('classFilterSelect').value;
+    if (!filter) return null;
+    return (dashboardData.rosterByCourse || []).find(c => c.courseId === filter) || null;
+}
+
+// The student names the current class filter should scope everything down
+// to. "All Classes" (empty filter) returns the full roster+submissions
+// union; a specific class returns just that course's roster — submissions
+// under a name that doesn't match any roster only show up under "All
+// Classes," since there's no way to know which class they belong to.
+function getFilteredStudentNames() {
+    const course = getSelectedCourse();
+    if (!course) return allStudentNames();
+    return [...course.students].sort((a, b) => a.localeCompare(b));
+}
+
+function filterRowsByStudents(rows, allowedNames) {
+    const allowed = new Set(allowedNames);
+    return (rows || []).filter(row => allowed.has((row['Student Name'] || '').toString().trim()));
+}
+
+// Populates the class filter dropdown from dashboardData.rosterByCourse.
+// Hidden entirely if Classroom isn't connected or only reports one
+// combined list (nothing to filter between). Preserves the current
+// selection across re-population (e.g. after Refresh).
+function populateClassFilter() {
+    const select = el('classFilterSelect');
+    const current = select.value;
+    const courses = dashboardData.rosterByCourse || [];
+
+    select.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All Classes';
+    select.appendChild(allOpt);
+    courses.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.courseId;
+        opt.textContent = c.courseName;
+        select.appendChild(opt);
+    });
+
+    select.style.display = courses.length ? '' : 'none';
+    if (current && courses.some(c => c.courseId === current)) select.value = current;
+    select.onchange = renderAll;
+}
+
 // --- Login -------------------------------------------------------------
 
 function el(id) { return document.getElementById(id); }
@@ -318,6 +373,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 function renderAll() {
     el('loadingArea').style.display = 'none';
     el('summaryPanel').classList.add('active');
+    populateClassFilter();
     renderSummary();
     renderHistoryControls();
     renderHistory();
@@ -327,7 +383,8 @@ function renderAll() {
 // --- Summary tab -----------------------------------------------------
 
 function renderSummary() {
-    const students = allStudentNames();
+    const course = getSelectedCourse();
+    const students = getFilteredStudentNames();
     const latest = {
         vocab: latestByStudent(dashboardData.vocab || []),
         knowledge: latestByStudent(dashboardData.knowledge || []),
@@ -337,18 +394,19 @@ function renderSummary() {
     };
 
     const rosterConnected = (dashboardData.roster || []).length > 0;
+    const classLabel = course ? ` in ${course.courseName}` : '';
     if (!students.length) {
-        el('summaryCount').textContent = '';
+        el('summaryCount').textContent = course ? `No students found in ${course.courseName}.` : '';
     } else if (rosterConnected) {
         const submitted = new Set();
         ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
             (dashboardData[key] || []).forEach(row => {
                 const n = (row['Student Name'] || '').toString().trim();
-                if (n) submitted.add(n);
+                if (n && students.includes(n)) submitted.add(n);
             });
         });
         el('summaryCount').textContent =
-            `${dashboardData.roster.length} students in your Google Classroom roster, ${submitted.size} with at least one submission.`;
+            `${students.length} student${students.length === 1 ? '' : 's'}${classLabel}, ${submitted.size} with at least one submission.`;
     } else {
         el('summaryCount').textContent =
             `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission. ` +
@@ -363,7 +421,7 @@ function renderSummary() {
         const td = document.createElement('td');
         td.colSpan = 6;
         td.className = 'empty-state';
-        td.textContent = 'No submissions yet.';
+        td.textContent = course ? `No students found in ${course.courseName}.` : 'No submissions yet.';
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -458,7 +516,7 @@ function renderHistoryControls() {
     allOpt.value = '';
     allOpt.textContent = 'All students';
     select.appendChild(allOpt);
-    allStudentNames().forEach(name => {
+    getFilteredStudentNames().forEach(name => {
         const opt = document.createElement('option');
         opt.value = name;
         opt.textContent = name;
@@ -470,6 +528,7 @@ function renderHistoryControls() {
 
 function renderHistory() {
     const filterName = el('historyStudentSelect').value;
+    const allowedNames = new Set(getFilteredStudentNames());
     const attempts = [];
 
     (dashboardData.vocab || []).forEach(row => attempts.push({
@@ -497,7 +556,8 @@ function renderHistory() {
         notes: row['Reading Summary'] || ''
     }));
 
-    const filtered = filterName ? attempts.filter(a => (a.name || '').trim() === filterName) : attempts;
+    let filtered = attempts.filter(a => allowedNames.has((a.name || '').trim()));
+    if (filterName) filtered = filtered.filter(a => (a.name || '').trim() === filterName);
     filtered.sort((a, b) => {
         const da = toDate(a.date), db = toDate(b.date);
         if (!da || !db) return 0;
@@ -556,24 +616,31 @@ function renderAverages() {
     const panel = el('averagesPanel');
     panel.innerHTML = '';
 
-    panel.appendChild(buildOverallStats());
-    panel.appendChild(buildSubsectionAverages('Chumash Knowledge — average score by Sefer', dashboardData.knowledge, KNOWLEDGE_SUBSECTIONS));
-    panel.appendChild(buildSubsectionAverages('Chumash Skills — average score by category', dashboardData.skills, SKILLS_SUBSECTIONS));
-    panel.appendChild(buildSubsectionAverages('Navi Knowledge — average score by Sefer', dashboardData.navi, NAVI_SUBSECTIONS));
-    panel.appendChild(buildAudioAverages());
-    panel.appendChild(buildVocabAverages());
+    const allowedNames = getFilteredStudentNames();
+    const vocabRows = filterRowsByStudents(dashboardData.vocab, allowedNames);
+    const knowledgeRows = filterRowsByStudents(dashboardData.knowledge, allowedNames);
+    const skillsRows = filterRowsByStudents(dashboardData.skills, allowedNames);
+    const naviRows = filterRowsByStudents(dashboardData.navi, allowedNames);
+    const audioRows = filterRowsByStudents(dashboardData.audio, allowedNames);
+
+    panel.appendChild(buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows));
+    panel.appendChild(buildSubsectionAverages('Chumash Knowledge — average score by Sefer', knowledgeRows, KNOWLEDGE_SUBSECTIONS));
+    panel.appendChild(buildSubsectionAverages('Chumash Skills — average score by category', skillsRows, SKILLS_SUBSECTIONS));
+    panel.appendChild(buildSubsectionAverages('Navi Knowledge — average score by Sefer', naviRows, NAVI_SUBSECTIONS));
+    panel.appendChild(buildAudioAverages(audioRows));
+    panel.appendChild(buildVocabAverages(vocabRows));
 }
 
-function buildOverallStats() {
+function buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows) {
     const wrap = document.createElement('div');
     const heading = document.createElement('div');
     heading.className = 'section-heading';
     heading.textContent = 'Submission counts';
     wrap.appendChild(heading);
 
-    [['Vocabulary', dashboardData.vocab], ['Chumash Knowledge', dashboardData.knowledge],
-     ['Chumash Skills', dashboardData.skills], ['Navi Knowledge', dashboardData.navi],
-     ['Reading Fluency', dashboardData.audio]].forEach(([label, rows]) => {
+    [['Vocabulary', vocabRows], ['Chumash Knowledge', knowledgeRows],
+     ['Chumash Skills', skillsRows], ['Navi Knowledge', naviRows],
+     ['Reading Fluency', audioRows]].forEach(([label, rows]) => {
         const row = document.createElement('div');
         row.className = 'stat-row';
         const l = document.createElement('span'); l.textContent = label;
@@ -636,14 +703,14 @@ function buildBarRow(label, pct) {
     return row;
 }
 
-function buildAudioAverages() {
+function buildAudioAverages(rows) {
     const wrap = document.createElement('div');
     const heading = document.createElement('div');
     heading.className = 'section-heading';
     heading.textContent = 'Reading Fluency — average rubric scores (out of 4)';
     wrap.appendChild(heading);
 
-    const rows = dashboardData.audio || [];
+    rows = rows || [];
     if (!rows.length) {
         const empty = document.createElement('p');
         empty.className = 'empty-state';
@@ -674,14 +741,14 @@ function buildAudioAverages() {
     return wrap;
 }
 
-function buildVocabAverages() {
+function buildVocabAverages(rows) {
     const wrap = document.createElement('div');
     const heading = document.createElement('div');
     heading.className = 'section-heading';
     heading.textContent = 'Vocabulary — overview';
     wrap.appendChild(heading);
 
-    const rows = dashboardData.vocab || [];
+    rows = rows || [];
     if (!rows.length) {
         const empty = document.createElement('p');
         empty.className = 'empty-state';
