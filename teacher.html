@@ -98,6 +98,7 @@
         <button class="tab-btn active" data-tab="summary">Student Summary</button>
         <button class="tab-btn" data-tab="history">Student History</button>
         <button class="tab-btn" data-tab="averages">Class Averages</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
         <select id="classFilterSelect" class="text-input" style="margin-bottom:0; width:auto; display:none;">
@@ -148,6 +149,15 @@
     </div>
 
     <div id="averagesPanel" class="tab-panel"></div>
+
+    <div id="settingsPanel" class="tab-panel">
+      <div class="section-heading">Connected Classroom courses</div>
+      <p class="muted">These are pulled directly from your Google Classroom account. Check the ones you want represented in this dashboard and in the student name dropdown, then Save — no code editing required.</p>
+      <div id="settingsCourseList" style="margin: 16px 0;"></div>
+      <p class="error-msg" id="settingsError"></p>
+      <p class="muted" id="settingsSuccess" style="min-height:1.2em;"></p>
+      <button class="btn-primary" id="saveCoursesBtn">Save</button>
+    </div>
   </div>
 </div>
 
@@ -355,7 +365,7 @@ el('refreshBtn').addEventListener('click', () => {
     .then(res => res.json())
     .then(data => {
         el('loadingArea').style.display = 'none';
-        if (data.success) { dashboardData = data.data; renderAll(); }
+        if (data.success) { dashboardData = data.data; renderTabContents(); }
     });
 });
 
@@ -367,12 +377,108 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         el(btn.dataset.tab + 'Panel').classList.add('active');
+        if (btn.dataset.tab === 'settings') loadCourseSettings();
     });
 });
 
+// --- Settings tab: manage tracked Classroom courses ---------------------
+
+function loadCourseSettings() {
+    const password = el('passwordInput').value;
+    const container = el('settingsCourseList');
+    container.innerHTML = 'Loading your Classroom courses...';
+    el('settingsError').textContent = '';
+    el('settingsSuccess').textContent = '';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'listCourses', payload: { password } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        container.innerHTML = '';
+        if (!data.success) {
+            el('settingsError').textContent = data.error || 'Could not load your Classroom courses.';
+            return;
+        }
+        if (!data.courses.length) {
+            container.textContent = 'No Classroom courses found for this account.';
+            return;
+        }
+        data.courses.forEach(c => {
+            const label = document.createElement('label');
+            label.style.display = 'block';
+            label.style.margin = '10px 0';
+            label.style.cursor = 'pointer';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = c.id;
+            checkbox.checked = c.tracked;
+            checkbox.style.marginRight = '10px';
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(c.name));
+            container.appendChild(label);
+        });
+    })
+    .catch(err => { el('settingsError').textContent = 'Could not reach the server: ' + err; });
+}
+
+el('saveCoursesBtn').addEventListener('click', () => {
+    const password = el('passwordInput').value;
+    const checkboxes = [...el('settingsCourseList').querySelectorAll('input[type="checkbox"]')];
+    const courseIds = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
+
+    el('settingsError').textContent = '';
+    el('settingsSuccess').textContent = 'Saving...';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'saveCourses', payload: { password, courseIds } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            el('settingsSuccess').textContent = '';
+            el('settingsError').textContent = data.error || 'Could not save your selection.';
+            return;
+        }
+        el('settingsSuccess').textContent = 'Saved. Refreshing dashboard data...';
+        // Re-fetch the dashboard so the class filter, Summary, History, and
+        // Class Averages all pick up the newly tracked courses immediately.
+        return fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'getDashboard', payload: { password } }),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        })
+        .then(res => res.json())
+        .then(dashData => {
+            if (dashData.success) {
+                dashboardData = dashData.data;
+                renderTabContents();
+                el('settingsSuccess').textContent = 'Saved and refreshed.';
+            }
+        });
+    })
+    .catch(err => { el('settingsSuccess').textContent = ''; el('settingsError').textContent = 'Could not reach the server: ' + err; });
+});
+
+// Called once right after login: shows the dashboard on the default
+// (Summary) tab and renders every tab's contents.
 function renderAll() {
     el('loadingArea').style.display = 'none';
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab-btn[data-tab="summary"]').classList.add('active');
     el('summaryPanel').classList.add('active');
+    renderTabContents();
+}
+
+// Re-renders every tab's contents WITHOUT changing which tab is currently
+// visible — used by Refresh and after saving Settings, so the teacher isn't
+// unexpectedly bounced back to Student Summary.
+function renderTabContents() {
     populateClassFilter();
     renderSummary();
     renderHistoryControls();
