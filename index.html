@@ -65,7 +65,13 @@
 <body>
 <div class="intake-container">
     <h1>Chumash Check-In Hub</h1>
-    <div id="nameArea"><input type="text" id="studentName" class="student-input" placeholder="Enter Full Name"><button class="btn-primary" id="nameSubmitBtn">Begin</button></div>
+    <div id="nameArea">
+        <select id="studentNameSelect" class="student-input hidden">
+            <option value="" disabled selected>Select your name...</option>
+        </select>
+        <input type="text" id="studentName" class="student-input" placeholder="Enter Full Name">
+        <button class="btn-primary" id="nameSubmitBtn">Begin</button>
+    </div>
     <div id="hubMenuArea" class="hidden">
         <p>Welcome, <span id="displayName"></span>. What are we doing today?</p>
         <button class="intake-choice" onclick="startVocab()">Vocabulary Check-In</button>
@@ -182,9 +188,52 @@ const MAX_RECORDING_SECONDS = 90;
 // so keep raw audio well under the 20MB post-encoding ceiling.
 const MAX_BLOB_BYTES = 12 * 1024 * 1024; // ~12MB raw
 
+// Class roster from Google Classroom (if connected on the backend). When it
+// loads successfully, students pick their name from a dropdown instead of
+// typing it — avoids typos/nicknames splitting one student into two rows in
+// the teacher dashboard. If Classroom isn't set up yet, or the request
+// fails, or the roster comes back empty, the plain text input below is left
+// as the only way to enter a name so nothing blocks a student from using
+// the app.
+const OTHER_NAME_VALUE = "__other__";
+
+fetch(GAS_WEB_APP_URL, {
+    method: "POST",
+    body: JSON.stringify({ action: "getRoster" }),
+    headers: { "Content-Type": "text/plain;charset=utf-8" }
+})
+.then(res => res.json())
+.then(data => {
+    const roster = (data && data.success && Array.isArray(data.roster)) ? data.roster : [];
+    if (!roster.length) return; // leave the text input as the only option
+    const select = document.getElementById('studentNameSelect');
+    roster.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+    });
+    const otherOpt = document.createElement('option');
+    otherOpt.value = OTHER_NAME_VALUE;
+    otherOpt.textContent = "My name isn't listed";
+    select.appendChild(otherOpt);
+
+    select.addEventListener('change', () => {
+        if (select.value === OTHER_NAME_VALUE) {
+            hide('studentNameSelect'); show('studentName');
+            document.getElementById('studentName').focus();
+        }
+    });
+
+    hide('studentName'); show('studentNameSelect');
+})
+.catch(() => { /* Classroom/roster unavailable — text input stays as-is */ });
+
 document.getElementById('nameSubmitBtn').addEventListener('click', () => {
-    state.name = document.getElementById('studentName').value.trim();
-    if (!state.name) return alert("Please enter your name.");
+    const select = document.getElementById('studentNameSelect');
+    const usingSelect = !select.classList.contains('hidden');
+    state.name = (usingSelect ? select.value : document.getElementById('studentName').value).trim();
+    if (!state.name || state.name === OTHER_NAME_VALUE) return alert("Please enter your name.");
     document.getElementById('displayName').innerText = state.name;
     hide('nameArea'); show('hubMenuArea');
 });

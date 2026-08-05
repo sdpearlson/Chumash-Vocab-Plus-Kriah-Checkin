@@ -231,8 +231,16 @@ function latestByStudent(rows) {
     return map;
 }
 
+// Union of the Google Classroom roster (if connected) with every student
+// name that appears in any results sheet — so a student who's missing from
+// Classroom (or whose typed name doesn't quite match the roster) still
+// shows up rather than silently disappearing.
 function allStudentNames() {
     const names = new Set();
+    (dashboardData.roster || []).forEach(name => {
+        const trimmed = (name || '').toString().trim();
+        if (trimmed) names.add(trimmed);
+    });
     ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
         (dashboardData[key] || []).forEach(row => {
             const name = (row['Student Name'] || '').toString().trim();
@@ -328,9 +336,24 @@ function renderSummary() {
         audio: latestByStudent(dashboardData.audio || [])
     };
 
-    el('summaryCount').textContent = students.length
-        ? `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission.`
-        : '';
+    const rosterConnected = (dashboardData.roster || []).length > 0;
+    if (!students.length) {
+        el('summaryCount').textContent = '';
+    } else if (rosterConnected) {
+        const submitted = new Set();
+        ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
+            (dashboardData[key] || []).forEach(row => {
+                const n = (row['Student Name'] || '').toString().trim();
+                if (n) submitted.add(n);
+            });
+        });
+        el('summaryCount').textContent =
+            `${dashboardData.roster.length} students in your Google Classroom roster, ${submitted.size} with at least one submission.`;
+    } else {
+        el('summaryCount').textContent =
+            `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission. ` +
+            `Google Classroom isn't connected yet, so students who haven't submitted anything don't show up here — see Code.gs.txt to connect it.`;
+    }
 
     const tbody = el('summaryTbody');
     tbody.innerHTML = '';
