@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chumash Check-In Hub — Teacher Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Frank+Ruhl+Libre:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Lora', serif; background-color: #fff9f0; color: #3e362e;
+    margin: 0; padding: 30px 20px 60px;
+  }
+  h1 {
+    font-family: 'Frank Ruhl Libre', serif; font-size: 2rem; margin: 0 0 6px; color: #2c2520;
+    text-align: center;
+  }
+  .subtitle { text-align: center; color: #a6998a; margin: 0 0 30px; font-size: 0.95rem; }
+  .container { max-width: 1150px; margin: 0 auto; }
+  .card {
+    background: #fff; border: 1px solid #e3dcd2; border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(62,54,46,0.05); padding: 30px;
+  }
+  .login-card { max-width: 420px; margin: 60px auto; text-align: center; }
+  .text-input {
+    width: 100%; padding: 13px; font-family: 'Lora', serif; font-size: 1.05rem;
+    border: 1px solid #d3c7b7; margin-bottom: 16px; background: #fdfbf8; border-radius: 3px;
+  }
+  select.text-input { cursor: pointer; }
+  .btn-primary {
+    background-color: #3e362e; color: #fff9f0; border: none; padding: 13px 26px;
+    text-transform: uppercase; font-weight: 600; letter-spacing: 0.03em; font-family: 'Lora', serif;
+    font-size: 0.95rem; cursor: pointer; border-radius: 3px; transition: background 0.2s ease;
+  }
+  .btn-primary:hover { background-color: #5a4e42; }
+  .btn-secondary {
+    background: none; border: 1px solid #d3c7b7; color: #3e362e; padding: 9px 18px;
+    font-family: 'Lora', serif; font-size: 0.85rem; cursor: pointer; border-radius: 3px;
+  }
+  .btn-secondary:hover { border-color: #3e362e; }
+  .error-msg { color: #a33; font-size: 0.9rem; margin-top: -6px; margin-bottom: 14px; min-height: 1.2em; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab-btn {
+    background: #fff; border: 1px solid #d3c7b7; color: #3e362e; padding: 10px 20px;
+    font-family: 'Lora', serif; font-size: 0.95rem; cursor: pointer; border-radius: 3px 3px 0 0;
+    border-bottom: none; position: relative; top: 1px;
+  }
+  .tab-btn.active { background: #3e362e; color: #fff9f0; border-color: #3e362e; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #ece5d8; vertical-align: top; }
+  th { font-weight: 600; color: #2c2520; background: #fbf6ec; white-space: nowrap; }
+  tr:hover td { background: #fdfbf5; }
+  .cell-pct { font-weight: 600; border-radius: 3px; padding: 4px 8px; display: inline-block; min-width: 46px; text-align: center; }
+  .pct-good { background: #e8f0e3; color: #3c6b2e; }
+  .pct-mid { background: #fff3d6; color: #8a6d1f; }
+  .pct-low { background: #f5dcdc; color: #a33; }
+  .pct-none { color: #c2b8a8; }
+  .muted { color: #a6998a; font-size: 0.85rem; }
+  .section-heading {
+    font-family: 'Frank Ruhl Libre', serif; font-size: 1.2rem; margin: 30px 0 12px; color: #2c2520;
+  }
+  .section-heading:first-child { margin-top: 0; }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .bar-label { width: 260px; flex-shrink: 0; font-size: 0.9rem; }
+  .bar-track { flex-grow: 1; background: #f1ebe0; border-radius: 3px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; background: #3e362e; border-radius: 3px; }
+  .bar-fill.good { background: #6ea15a; }
+  .bar-fill.mid { background: #d9a63b; }
+  .bar-fill.low { background: #c0605f; }
+  .bar-value { width: 60px; flex-shrink: 0; font-size: 0.88rem; text-align: right; font-weight: 600; }
+  .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #ece5d8; font-size: 0.9rem; }
+  .empty-state { color: #a6998a; text-align: center; padding: 40px 0; font-style: italic; }
+  .history-controls { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
+  .history-controls select { max-width: 280px; }
+  .attempt-detail { font-size: 0.85rem; color: #6b6055; white-space: pre-line; }
+  .loading { text-align: center; padding: 60px 0; color: #a6998a; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Chumash Check-In Hub</h1>
+  <p class="subtitle">Teacher Dashboard</p>
+
+  <div id="loginArea" class="card login-card">
+    <p>Enter the teacher passcode to view results.</p>
+    <input type="password" id="passwordInput" class="text-input" placeholder="Passcode">
+    <p class="error-msg" id="loginError"></p>
+    <button class="btn-primary" id="loginBtn">View Dashboard</button>
+  </div>
+
+  <div id="dashboardArea" class="card" style="display:none;">
+    <div class="top-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="summary">Student Summary</button>
+        <button class="tab-btn" data-tab="history">Student History</button>
+        <button class="tab-btn" data-tab="averages">Class Averages</button>
+      </div>
+      <button class="btn-secondary" id="refreshBtn">&#8635; Refresh</button>
+    </div>
+
+    <div id="loadingArea" class="loading">Loading results...</div>
+
+    <div id="summaryPanel" class="tab-panel">
+      <p class="muted" id="summaryCount"></p>
+      <div style="overflow-x:auto;">
+        <table id="summaryTable">
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Vocabulary</th>
+              <th>Chumash Knowledge</th>
+              <th>Chumash Skills</th>
+              <th>Navi Knowledge</th>
+              <th>Reading Fluency</th>
+            </tr>
+          </thead>
+          <tbody id="summaryTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="historyPanel" class="tab-panel">
+      <div class="history-controls">
+        <select id="historyStudentSelect" class="text-input"></select>
+      </div>
+      <div style="overflow-x:auto;">
+        <table id="historyTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Section</th>
+              <th>Result</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="historyTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="averagesPanel" class="tab-panel"></div>
+  </div>
+</div>
+
+<script>
+const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2DM6175X7uHjWM3ICSesbcUWJYWmxogqnbNJpKHp3oStb-1ch-VGu/exec";
+
+let dashboardData = null; // { vocab: [], knowledge: [], skills: [], navi: [], audio: [] }
+
+const KNOWLEDGE_SUBSECTIONS = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
+const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills (Gematria, Genuvah Patach, Aliyot)'];
+const NAVI_SUBSECTIONS = ['Yehoshua', 'Shoftim', 'Shmuel I', 'Shmuel II', 'Megillat Esther', 'Megillat Rut', 'Sefer Yonah'];
+const AUDIO_DIMENSIONS = ['Accuracy', 'Fluency & Pace', 'Nekudot', 'Decoding', 'Pronunciation', 'Phrasing', 'Self-Correction', 'Overall'];
+const OVERALL_LABELS = { 4: 'Exceeds Expectations', 3: 'Meets Expectations', 2: 'Developing', 1: 'Beginning' };
+
+// --- Parsing helpers -------------------------------------------------
+
+// Parses the "X / Y" fraction format used across every results sheet
+// (Vocab's Score, Knowledge/Skills/Navi's Total Score and per-category
+// cells) into { correct, total, pct }. Returns null if unparseable.
+function parseFraction(str) {
+    if (typeof str !== 'string') return null;
+    const m = str.match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const correct = parseFloat(m[1]), total = parseFloat(m[2]);
+    if (!total) return { correct, total, pct: null };
+    return { correct, total, pct: (correct / total) * 100 };
+}
+
+function parsePercent(str) {
+    if (typeof str !== 'string') return null;
+    const m = str.match(/(-?\d+(?:\.\d+)?)\s*%/);
+    return m ? parseFloat(m[1]) : null;
+}
+
+function pctClass(pct) {
+    if (pct === null || pct === undefined || isNaN(pct)) return 'pct-none';
+    if (pct >= 85) return 'pct-good';
+    if (pct >= 70) return 'pct-mid';
+    return 'pct-low';
+}
+
+function barClass(pct) {
+    if (pct === null || pct === undefined || isNaN(pct)) return '';
+    if (pct >= 85) return 'good';
+    if (pct >= 70) return 'mid';
+    return 'low';
+}
+
+function fmtPct(pct) {
+    if (pct === null || pct === undefined || isNaN(pct)) return '—';
+    return Math.round(pct) + '%';
+}
+
+function toDate(v) {
+    const d = v instanceof Date ? v : new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function fmtDate(v) {
+    const d = toDate(v);
+    if (!d) return '—';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) +
+        ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function average(nums) {
+    const clean = nums.filter(n => typeof n === 'number' && !isNaN(n));
+    if (!clean.length) return null;
+    return clean.reduce((a, b) => a + b, 0) / clean.length;
+}
+
+// Returns, for a given sheet's rows, a Map of student name -> their most
+// recent row (by Timestamp). Rows already come back roughly chronological
+// (sheets are appended to), but sorting explicitly is safer.
+function latestByStudent(rows) {
+    const map = new Map();
+    rows.forEach(row => {
+        const name = (row['Student Name'] || '').toString().trim();
+        if (!name) return;
+        const existing = map.get(name);
+        const t = toDate(row['Timestamp']);
+        if (!existing || (t && toDate(existing['Timestamp']) && t > toDate(existing['Timestamp']))) {
+            map.set(name, row);
+        }
+    });
+    return map;
+}
+
+function allStudentNames() {
+    const names = new Set();
+    ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
+        (dashboardData[key] || []).forEach(row => {
+            const name = (row['Student Name'] || '').toString().trim();
+            if (name) names.add(name);
+        });
+    });
+    return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+// --- Login -------------------------------------------------------------
+
+function el(id) { return document.getElementById(id); }
+
+el('loginBtn').addEventListener('click', attemptLogin);
+el('passwordInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') attemptLogin(); });
+
+function attemptLogin() {
+    const password = el('passwordInput').value;
+    if (!password) { el('loginError').textContent = 'Please enter a passcode.'; return; }
+    el('loginBtn').disabled = true;
+    el('loginBtn').textContent = 'Checking...';
+    el('loginError').textContent = '';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getDashboard', payload: { password } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        el('loginBtn').disabled = false;
+        el('loginBtn').textContent = 'View Dashboard';
+        if (data.success) {
+            dashboardData = data.data;
+            el('loginArea').style.display = 'none';
+            el('dashboardArea').style.display = 'block';
+            renderAll();
+        } else {
+            el('loginError').textContent = data.error || 'Incorrect passcode.';
+        }
+    })
+    .catch(err => {
+        el('loginBtn').disabled = false;
+        el('loginBtn').textContent = 'View Dashboard';
+        el('loginError').textContent = 'Could not reach the server: ' + err;
+    });
+}
+
+el('refreshBtn').addEventListener('click', () => {
+    const password = el('passwordInput').value;
+    el('loadingArea').style.display = 'block';
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getDashboard', payload: { password } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        el('loadingArea').style.display = 'none';
+        if (data.success) { dashboardData = data.data; renderAll(); }
+    });
+});
+
+// --- Tabs ----------------------------------------------------------------
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        el(btn.dataset.tab + 'Panel').classList.add('active');
+    });
+});
+
+function renderAll() {
+    el('loadingArea').style.display = 'none';
+    el('summaryPanel').classList.add('active');
+    renderSummary();
+    renderHistoryControls();
+    renderHistory();
+    renderAverages();
+}
+
+// --- Summary tab -----------------------------------------------------
+
+function renderSummary() {
+    const students = allStudentNames();
+    const latest = {
+        vocab: latestByStudent(dashboardData.vocab || []),
+        knowledge: latestByStudent(dashboardData.knowledge || []),
+        skills: latestByStudent(dashboardData.skills || []),
+        navi: latestByStudent(dashboardData.navi || []),
+        audio: latestByStudent(dashboardData.audio || [])
+    };
+
+    el('summaryCount').textContent = students.length
+        ? `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission.`
+        : '';
+
+    const tbody = el('summaryTbody');
+    tbody.innerHTML = '';
+
+    if (!students.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.className = 'empty-state';
+        td.textContent = 'No submissions yet.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+    }
+
+    students.forEach(name => {
+        const tr = document.createElement('tr');
+        appendCell(tr, name, false);
+        appendVocabCell(tr, latest.vocab.get(name));
+        appendFractionCell(tr, latest.knowledge.get(name), 'Total Score');
+        appendSkillsCell(tr, latest.skills.get(name));
+        appendFractionCell(tr, latest.navi.get(name), 'Total Score');
+        appendAudioCell(tr, latest.audio.get(name));
+        tbody.appendChild(tr);
+    });
+}
+
+function appendCell(tr, text, isPct) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    tr.appendChild(td);
+}
+
+function pctSpan(pct, extraText) {
+    const span = document.createElement('span');
+    span.className = 'cell-pct ' + pctClass(pct);
+    span.textContent = fmtPct(pct) + (extraText ? ' ' + extraText : '');
+    return span;
+}
+
+function appendFractionCell(tr, row, field) {
+    const td = document.createElement('td');
+    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+    const frac = parseFraction(row[field]);
+    td.appendChild(pctSpan(frac ? frac.pct : null));
+    if (frac) {
+        const small = document.createElement('div');
+        small.className = 'muted';
+        small.textContent = row[field];
+        td.appendChild(small);
+    }
+    tr.appendChild(td);
+}
+
+function appendVocabCell(tr, row) {
+    const td = document.createElement('td');
+    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+    const frac = parseFraction(row['Score']);
+    td.appendChild(pctSpan(frac ? frac.pct : null));
+    const small = document.createElement('div');
+    small.className = 'muted';
+    small.textContent = (row['Assigned Group'] ? 'Group ' + row['Assigned Group'] + ' · ' : '') + (row['Score'] || '');
+    td.appendChild(small);
+    tr.appendChild(td);
+}
+
+function appendSkillsCell(tr, row) {
+    const td = document.createElement('td');
+    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+    const pct = parsePercent(row['Percentage']);
+    td.appendChild(pctSpan(pct));
+    const small = document.createElement('div');
+    small.className = 'muted';
+    small.textContent = row['Total Score'] || '';
+    td.appendChild(small);
+    tr.appendChild(td);
+}
+
+function appendAudioCell(tr, row) {
+    const td = document.createElement('td');
+    if (!row) { td.innerHTML = '<span class="muted">No submission yet</span>'; tr.appendChild(td); return; }
+    const overall = Number(row['Overall']);
+    const pct = isNaN(overall) ? null : (overall / 4) * 100;
+    const span = document.createElement('span');
+    span.className = 'cell-pct ' + pctClass(pct);
+    span.textContent = OVERALL_LABELS[overall] || ('Overall: ' + row['Overall']);
+    td.appendChild(span);
+    const small = document.createElement('div');
+    small.className = 'muted';
+    small.textContent = row['WPM'] ? row['WPM'] + ' WPM' : '';
+    td.appendChild(small);
+    tr.appendChild(td);
+}
+
+// --- History tab -----------------------------------------------------
+
+function renderHistoryControls() {
+    const select = el('historyStudentSelect');
+    const current = select.value;
+    select.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All students';
+    select.appendChild(allOpt);
+    allStudentNames().forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+    });
+    if (current) select.value = current;
+    select.onchange = renderHistory;
+}
+
+function renderHistory() {
+    const filterName = el('historyStudentSelect').value;
+    const attempts = [];
+
+    (dashboardData.vocab || []).forEach(row => attempts.push({
+        date: row['Timestamp'], name: row['Student Name'], section: 'Vocabulary',
+        result: row['Score'] || '—',
+        notes: (row['Assigned Group'] ? 'Group ' + row['Assigned Group'] + '. ' : '') +
+            (row['Mistakes'] && row['Mistakes'] !== 'None' ? 'Missed: ' + row['Mistakes'] : '')
+    }));
+    (dashboardData.knowledge || []).forEach(row => attempts.push({
+        date: row['Timestamp'], name: row['Student Name'], section: 'Chumash Knowledge',
+        result: row['Total Score'] || '—', notes: row['Areas to Focus On'] || ''
+    }));
+    (dashboardData.skills || []).forEach(row => attempts.push({
+        date: row['Timestamp'], name: row['Student Name'], section: 'Chumash Skills',
+        result: (row['Total Score'] || '—') + (row['Percentage'] ? ' (' + row['Percentage'] + ')' : ''),
+        notes: row['Areas to Focus On'] || ''
+    }));
+    (dashboardData.navi || []).forEach(row => attempts.push({
+        date: row['Timestamp'], name: row['Student Name'], section: 'Navi Knowledge',
+        result: row['Total Score'] || '—', notes: row['Areas to Focus On'] || ''
+    }));
+    (dashboardData.audio || []).forEach(row => attempts.push({
+        date: row['Timestamp'], name: row['Student Name'], section: 'Reading Fluency',
+        result: (OVERALL_LABELS[Number(row['Overall'])] || ('Overall: ' + row['Overall'])) + (row['WPM'] ? ', ' + row['WPM'] + ' WPM' : ''),
+        notes: row['Reading Summary'] || ''
+    }));
+
+    const filtered = filterName ? attempts.filter(a => (a.name || '').trim() === filterName) : attempts;
+    filtered.sort((a, b) => {
+        const da = toDate(a.date), db = toDate(b.date);
+        if (!da || !db) return 0;
+        return db - da;
+    });
+
+    const tbody = el('historyTbody');
+    tbody.innerHTML = '';
+
+    if (!filtered.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 4;
+        td.className = 'empty-state';
+        td.textContent = 'No attempts recorded yet.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+    }
+
+    filtered.forEach(a => {
+        const tr = document.createElement('tr');
+        const dateTd = document.createElement('td');
+        dateTd.textContent = fmtDate(a.date);
+        tr.appendChild(dateTd);
+
+        const sectionTd = document.createElement('td');
+        if (!filterName) {
+            const strong = document.createElement('div');
+            strong.textContent = a.name;
+            strong.style.fontWeight = '600';
+            sectionTd.appendChild(strong);
+        }
+        const sectionLine = document.createElement('div');
+        sectionLine.textContent = a.section;
+        sectionLine.className = filterName ? '' : 'muted';
+        sectionTd.appendChild(sectionLine);
+        tr.appendChild(sectionTd);
+
+        const resultTd = document.createElement('td');
+        resultTd.textContent = a.result;
+        tr.appendChild(resultTd);
+
+        const notesTd = document.createElement('td');
+        notesTd.className = 'attempt-detail';
+        notesTd.textContent = a.notes || '—';
+        tr.appendChild(notesTd);
+
+        tbody.appendChild(tr);
+    });
+}
+
+// --- Class averages tab -----------------------------------------------
+
+function renderAverages() {
+    const panel = el('averagesPanel');
+    panel.innerHTML = '';
+
+    panel.appendChild(buildOverallStats());
+    panel.appendChild(buildSubsectionAverages('Chumash Knowledge — average score by Sefer', dashboardData.knowledge, KNOWLEDGE_SUBSECTIONS));
+    panel.appendChild(buildSubsectionAverages('Chumash Skills — average score by category', dashboardData.skills, SKILLS_SUBSECTIONS));
+    panel.appendChild(buildSubsectionAverages('Navi Knowledge — average score by Sefer', dashboardData.navi, NAVI_SUBSECTIONS));
+    panel.appendChild(buildAudioAverages());
+    panel.appendChild(buildVocabAverages());
+}
+
+function buildOverallStats() {
+    const wrap = document.createElement('div');
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = 'Submission counts';
+    wrap.appendChild(heading);
+
+    [['Vocabulary', dashboardData.vocab], ['Chumash Knowledge', dashboardData.knowledge],
+     ['Chumash Skills', dashboardData.skills], ['Navi Knowledge', dashboardData.navi],
+     ['Reading Fluency', dashboardData.audio]].forEach(([label, rows]) => {
+        const row = document.createElement('div');
+        row.className = 'stat-row';
+        const l = document.createElement('span'); l.textContent = label;
+        const v = document.createElement('span'); v.style.fontWeight = '600';
+        v.textContent = (rows || []).length + ' submission' + ((rows || []).length === 1 ? '' : 's');
+        row.appendChild(l); row.appendChild(v);
+        wrap.appendChild(row);
+    });
+    return wrap;
+}
+
+// Builds one "average % per subsection" block (e.g. average per Sefer for
+// Knowledge/Navi, average per category for Skills), sorted weakest-first so
+// the topics most worth reviewing float to the top.
+function buildSubsectionAverages(title, rows, subsections) {
+    const wrap = document.createElement('div');
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = title;
+    wrap.appendChild(heading);
+
+    if (!rows || !rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-state';
+        empty.textContent = 'No submissions yet.';
+        wrap.appendChild(empty);
+        return wrap;
+    }
+
+    const averages = subsections.map(sub => {
+        const pcts = rows.map(r => {
+            const f = parseFraction(r[sub]);
+            return f ? f.pct : null;
+        }).filter(p => p !== null);
+        return { label: sub, pct: average(pcts) };
+    }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
+
+    averages.forEach(a => wrap.appendChild(buildBarRow(a.label, a.pct)));
+    return wrap;
+}
+
+function buildBarRow(label, pct) {
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'bar-label';
+    labelDiv.textContent = label;
+    row.appendChild(labelDiv);
+    const track = document.createElement('div');
+    track.className = 'bar-track';
+    const fill = document.createElement('div');
+    fill.className = 'bar-fill ' + barClass(pct);
+    fill.style.width = (pct === null || isNaN(pct) ? 0 : Math.max(0, Math.min(100, pct))) + '%';
+    track.appendChild(fill);
+    row.appendChild(track);
+    const valueDiv = document.createElement('div');
+    valueDiv.className = 'bar-value';
+    valueDiv.textContent = fmtPct(pct);
+    row.appendChild(valueDiv);
+    return row;
+}
+
+function buildAudioAverages() {
+    const wrap = document.createElement('div');
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = 'Reading Fluency — average rubric scores (out of 4)';
+    wrap.appendChild(heading);
+
+    const rows = dashboardData.audio || [];
+    if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-state';
+        empty.textContent = 'No submissions yet.';
+        wrap.appendChild(empty);
+        return wrap;
+    }
+
+    AUDIO_DIMENSIONS.forEach(dim => {
+        const vals = rows.map(r => Number(r[dim])).filter(n => !isNaN(n));
+        const avg = average(vals);
+        const pct = avg === null ? null : (avg / 4) * 100;
+        const row = buildBarRow(dim, pct);
+        // Show the raw /4 average instead of a percentage for this section.
+        row.lastChild.textContent = avg === null ? '—' : avg.toFixed(1) + ' / 4';
+        wrap.appendChild(row);
+    });
+
+    const wpmVals = rows.map(r => Number(r['WPM'])).filter(n => !isNaN(n));
+    const avgWpm = average(wpmVals);
+    const wpmRow = document.createElement('div');
+    wpmRow.className = 'stat-row';
+    const l = document.createElement('span'); l.textContent = 'Average words per minute';
+    const v = document.createElement('span'); v.style.fontWeight = '600';
+    v.textContent = avgWpm === null ? '—' : Math.round(avgWpm) + ' WPM';
+    wpmRow.appendChild(l); wpmRow.appendChild(v);
+    wrap.appendChild(wpmRow);
+    return wrap;
+}
+
+function buildVocabAverages() {
+    const wrap = document.createElement('div');
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = 'Vocabulary — overview';
+    wrap.appendChild(heading);
+
+    const rows = dashboardData.vocab || [];
+    if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-state';
+        empty.textContent = 'No submissions yet.';
+        wrap.appendChild(empty);
+        return wrap;
+    }
+
+    const pcts = rows.map(r => { const f = parseFraction(r['Score']); return f ? f.pct : null; }).filter(p => p !== null);
+    wrap.appendChild(buildBarRow('Average score (all attempts)', average(pcts)));
+
+    const groupCounts = {};
+    rows.forEach(r => {
+        const g = (r['Assigned Group'] || 'Unknown').toString();
+        groupCounts[g] = (groupCounts[g] || 0) + 1;
+    });
+    Object.keys(groupCounts).sort().forEach(g => {
+        const row = document.createElement('div');
+        row.className = 'stat-row';
+        const l = document.createElement('span'); l.textContent = 'Group ' + g;
+        const v = document.createElement('span'); v.style.fontWeight = '600';
+        v.textContent = groupCounts[g] + ' attempt' + (groupCounts[g] === 1 ? '' : 's');
+        row.appendChild(l); row.appendChild(v);
+        wrap.appendChild(row);
+    });
+    return wrap;
+}
+</script>
+</body>
+</html>
