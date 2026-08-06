@@ -98,7 +98,6 @@
         <button class="tab-btn active" data-tab="summary">Student Summary</button>
         <button class="tab-btn" data-tab="history">Student History</button>
         <button class="tab-btn" data-tab="averages">Class Averages</button>
-        <button class="tab-btn" data-tab="settings">Settings</button>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
         <select id="classFilterSelect" class="text-input" style="margin-bottom:0; width:auto; display:none;">
@@ -149,15 +148,6 @@
     </div>
 
     <div id="averagesPanel" class="tab-panel"></div>
-
-    <div id="settingsPanel" class="tab-panel">
-      <div class="section-heading">Connected Classroom courses</div>
-      <p class="muted">These are pulled directly from your Google Classroom account. Check the ones you want represented in this dashboard and in the student name dropdown, then Save — no code editing required.</p>
-      <div id="settingsCourseList" style="margin: 16px 0;"></div>
-      <p class="error-msg" id="settingsError"></p>
-      <p class="muted" id="settingsSuccess" style="min-height:1.2em;"></p>
-      <button class="btn-primary" id="saveCoursesBtn">Save</button>
-    </div>
   </div>
 </div>
 
@@ -246,10 +236,10 @@ function latestByStudent(rows) {
     return map;
 }
 
-// Union of the Google Classroom roster (if connected) with every student
-// name that appears in any results sheet — so a student who's missing from
-// Classroom (or whose typed name doesn't quite match the roster) still
-// shows up rather than silently disappearing.
+// Union of the roster sheet with every student name that appears in any
+// results sheet — so a student who's missing from the roster (or whose
+// typed name doesn't quite match it) still shows up rather than silently
+// disappearing.
 function allStudentNames() {
     const names = new Set();
     (dashboardData.roster || []).forEach(name => {
@@ -265,23 +255,23 @@ function allStudentNames() {
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
-// Returns the currently-selected course object from dashboardData.rosterByCourse,
-// or null if the filter is set to "All Classes" or no course matches.
-function getSelectedCourse() {
+// Returns the currently-selected class object from dashboardData.rosterByClass,
+// or null if the filter is set to "All Classes" or nothing matches.
+function getSelectedClass() {
     const filter = el('classFilterSelect').value;
     if (!filter) return null;
-    return (dashboardData.rosterByCourse || []).find(c => c.courseId === filter) || null;
+    return (dashboardData.rosterByClass || []).find(c => c.classId === filter) || null;
 }
 
 // The student names the current class filter should scope everything down
 // to. "All Classes" (empty filter) returns the full roster+submissions
-// union; a specific class returns just that course's roster — submissions
-// under a name that doesn't match any roster only show up under "All
+// union; a specific class returns just that class's roster — submissions
+// under a name that doesn't match any roster row only show up under "All
 // Classes," since there's no way to know which class they belong to.
 function getFilteredStudentNames() {
-    const course = getSelectedCourse();
-    if (!course) return allStudentNames();
-    return [...course.students].sort((a, b) => a.localeCompare(b));
+    const cls = getSelectedClass();
+    if (!cls) return allStudentNames();
+    return [...cls.students].sort((a, b) => a.localeCompare(b));
 }
 
 function filterRowsByStudents(rows, allowedNames) {
@@ -289,29 +279,29 @@ function filterRowsByStudents(rows, allowedNames) {
     return (rows || []).filter(row => allowed.has((row['Student Name'] || '').toString().trim()));
 }
 
-// Populates the class filter dropdown from dashboardData.rosterByCourse.
-// Hidden entirely if Classroom isn't connected or only reports one
-// combined list (nothing to filter between). Preserves the current
-// selection across re-population (e.g. after Refresh).
+// Populates the class filter dropdown from dashboardData.rosterByClass.
+// Hidden entirely if the Roster sheet doesn't exist yet or has nothing to
+// filter between. Preserves the current selection across re-population
+// (e.g. after Refresh).
 function populateClassFilter() {
     const select = el('classFilterSelect');
     const current = select.value;
-    const courses = dashboardData.rosterByCourse || [];
+    const classes = dashboardData.rosterByClass || [];
 
     select.innerHTML = '';
     const allOpt = document.createElement('option');
     allOpt.value = '';
     allOpt.textContent = 'All Classes';
     select.appendChild(allOpt);
-    courses.forEach(c => {
+    classes.forEach(c => {
         const opt = document.createElement('option');
-        opt.value = c.courseId;
-        opt.textContent = c.courseName;
+        opt.value = c.classId;
+        opt.textContent = `${c.className} — ${c.teacherName}`;
         select.appendChild(opt);
     });
 
-    select.style.display = courses.length ? '' : 'none';
-    if (current && courses.some(c => c.courseId === current)) select.value = current;
+    select.style.display = classes.length ? '' : 'none';
+    if (current && classes.some(c => c.classId === current)) select.value = current;
     select.onchange = renderAll;
 }
 
@@ -377,91 +367,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
         btn.classList.add('active');
         el(btn.dataset.tab + 'Panel').classList.add('active');
-        if (btn.dataset.tab === 'settings') loadCourseSettings();
     });
-});
-
-// --- Settings tab: manage tracked Classroom courses ---------------------
-
-function loadCourseSettings() {
-    const password = el('passwordInput').value;
-    const container = el('settingsCourseList');
-    container.innerHTML = 'Loading your Classroom courses...';
-    el('settingsError').textContent = '';
-    el('settingsSuccess').textContent = '';
-
-    fetch(GAS_WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'listCourses', payload: { password } }),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-    })
-    .then(res => res.json())
-    .then(data => {
-        container.innerHTML = '';
-        if (!data.success) {
-            el('settingsError').textContent = data.error || 'Could not load your Classroom courses.';
-            return;
-        }
-        if (!data.courses.length) {
-            container.textContent = 'No Classroom courses found for this account.';
-            return;
-        }
-        data.courses.forEach(c => {
-            const label = document.createElement('label');
-            label.style.display = 'block';
-            label.style.margin = '10px 0';
-            label.style.cursor = 'pointer';
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.value = c.id;
-            checkbox.checked = c.tracked;
-            checkbox.style.marginRight = '10px';
-            label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(c.name));
-            container.appendChild(label);
-        });
-    })
-    .catch(err => { el('settingsError').textContent = 'Could not reach the server: ' + err; });
-}
-
-el('saveCoursesBtn').addEventListener('click', () => {
-    const password = el('passwordInput').value;
-    const checkboxes = [...el('settingsCourseList').querySelectorAll('input[type="checkbox"]')];
-    const courseIds = checkboxes.filter(cb => cb.checked).map(cb => cb.value);
-
-    el('settingsError').textContent = '';
-    el('settingsSuccess').textContent = 'Saving...';
-
-    fetch(GAS_WEB_APP_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'saveCourses', payload: { password, courseIds } }),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (!data.success) {
-            el('settingsSuccess').textContent = '';
-            el('settingsError').textContent = data.error || 'Could not save your selection.';
-            return;
-        }
-        el('settingsSuccess').textContent = 'Saved. Refreshing dashboard data...';
-        // Re-fetch the dashboard so the class filter, Summary, History, and
-        // Class Averages all pick up the newly tracked courses immediately.
-        return fetch(GAS_WEB_APP_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'getDashboard', payload: { password } }),
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-        })
-        .then(res => res.json())
-        .then(dashData => {
-            if (dashData.success) {
-                dashboardData = dashData.data;
-                renderTabContents();
-                el('settingsSuccess').textContent = 'Saved and refreshed.';
-            }
-        });
-    })
-    .catch(err => { el('settingsSuccess').textContent = ''; el('settingsError').textContent = 'Could not reach the server: ' + err; });
 });
 
 // Called once right after login: shows the dashboard on the default
@@ -489,7 +395,7 @@ function renderTabContents() {
 // --- Summary tab -----------------------------------------------------
 
 function renderSummary() {
-    const course = getSelectedCourse();
+    const cls = getSelectedClass();
     const students = getFilteredStudentNames();
     const latest = {
         vocab: latestByStudent(dashboardData.vocab || []),
@@ -500,9 +406,9 @@ function renderSummary() {
     };
 
     const rosterConnected = (dashboardData.roster || []).length > 0;
-    const classLabel = course ? ` in ${course.courseName}` : '';
+    const classLabel = cls ? ` in ${cls.className} (${cls.teacherName})` : '';
     if (!students.length) {
-        el('summaryCount').textContent = course ? `No students found in ${course.courseName}.` : '';
+        el('summaryCount').textContent = cls ? `No students found in ${cls.className} (${cls.teacherName}).` : '';
     } else if (rosterConnected) {
         const submitted = new Set();
         ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
@@ -516,7 +422,7 @@ function renderSummary() {
     } else {
         el('summaryCount').textContent =
             `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission. ` +
-            `Google Classroom isn't connected yet, so students who haven't submitted anything don't show up here — see Code.gs.txt to connect it.`;
+            `No roster sheet found yet, so students who haven't submitted anything don't show up here — add a "Roster" tab (Student Name / Class / Teacher columns) to your Sheet to enable this.`;
     }
 
     const tbody = el('summaryTbody');
@@ -527,7 +433,7 @@ function renderSummary() {
         const td = document.createElement('td');
         td.colSpan = 6;
         td.className = 'empty-state';
-        td.textContent = course ? `No students found in ${course.courseName}.` : 'No submissions yet.';
+        td.textContent = cls ? `No students found in ${cls.className} (${cls.teacherName}).` : 'No submissions yet.';
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
