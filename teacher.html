@@ -78,6 +78,12 @@
   .history-controls select { max-width: 280px; }
   .attempt-detail { font-size: 0.85rem; color: #6b6055; white-space: pre-line; }
   .loading { text-align: center; padding: 60px 0; color: #a6998a; }
+  .scope-heading { font-family: 'Frank Ruhl Libre', serif; font-size: 1.5rem; margin: 0 0 2px; color: #2c2520; }
+  .scope-subtitle { color: #a6998a; font-size: 0.9rem; margin: 0 0 20px; }
+  .trends-block { background: #fbf6ec; border: 1px solid #ece5d8; border-radius: 6px; padding: 18px 20px; margin-bottom: 26px; }
+  .trends-block .section-heading { margin-top: 0; }
+  .trends-text { margin: 6px 0 0; line-height: 1.55; }
+  td .muted { font-size: 0.8rem; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -95,38 +101,18 @@
   <div id="dashboardArea" class="card" style="display:none;">
     <div class="top-bar">
       <div class="tabs">
-        <button class="tab-btn active" data-tab="summary">Student Summary</button>
+        <button class="tab-btn active" data-tab="averages">Class Averages</button>
         <button class="tab-btn" data-tab="history">Student History</button>
-        <button class="tab-btn" data-tab="averages">Class Averages</button>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
         <select id="classFilterSelect" class="text-input" style="margin-bottom:0; width:auto; display:none;">
-          <option value="">All Classes</option>
+          <option value="">All Students</option>
         </select>
         <button class="btn-secondary" id="refreshBtn">&#8635; Refresh</button>
       </div>
     </div>
 
     <div id="loadingArea" class="loading">Loading results...</div>
-
-    <div id="summaryPanel" class="tab-panel">
-      <p class="muted" id="summaryCount"></p>
-      <div style="overflow-x:auto;">
-        <table id="summaryTable">
-          <thead>
-            <tr>
-              <th>Student</th>
-              <th>Vocabulary</th>
-              <th>Chumash Knowledge</th>
-              <th>Chumash Skills</th>
-              <th>Navi Knowledge</th>
-              <th>Reading Fluency</th>
-            </tr>
-          </thead>
-          <tbody id="summaryTbody"></tbody>
-        </table>
-      </div>
-    </div>
 
     <div id="historyPanel" class="tab-panel">
       <div class="history-controls">
@@ -147,7 +133,7 @@
       </div>
     </div>
 
-    <div id="averagesPanel" class="tab-panel"></div>
+    <div id="averagesPanel" class="tab-panel active"></div>
   </div>
 </div>
 
@@ -155,6 +141,19 @@
 const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2DM6175X7uHjWM3ICSesbcUWJYWmxogqnbNJpKHp3oStb-1ch-VGu/exec";
 
 let dashboardData = null; // { vocab: [], knowledge: [], skills: [], navi: [], audio: [] }
+
+// Bumped every time dashboardData is replaced (login or Refresh) so cached
+// AI trend summaries — which are keyed off this — get regenerated instead
+// of showing stale text after new submissions come in.
+let dashboardDataVersion = 0;
+// Cache of already-generated trend summaries, keyed by filter value + data
+// version, so switching tabs or re-rendering doesn't re-call Gemini for a
+// scope we already have a summary for.
+const trendsSummaryCache = {};
+// Incremented on every renderAverages() call; used to make sure a slow
+// Gemini response can't overwrite the page after the teacher has already
+// switched to a different filter.
+let trendsRenderToken = 0;
 
 const KNOWLEDGE_SUBSECTIONS = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
 const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills (Gematria, Genuvah Patach, Aliyot)'];
@@ -255,23 +254,66 @@ function allStudentNames() {
     return [...names].sort((a, b) => a.localeCompare(b));
 }
 
-// Returns the currently-selected class object from dashboardData.rosterByClass,
-// or null if the filter is set to "All Classes" or nothing matches.
-function getSelectedClass() {
-    const filter = el('classFilterSelect').value;
-    if (!filter) return null;
-    return (dashboardData.rosterByClass || []).find(c => c.classId === filter) || null;
+// Turns a grade label ("6", "K", "(No Grade Listed)") into display text
+// ("6th Grade", "K Grade", "Ungraded").
+function ordinalSuffix(n) {
+    const rem100 = n % 100;
+    if (rem100 >= 11 && rem100 <= 13) return 'th';
+    switch (n % 10) {
+        case 1: return 'st';
+        case 2: return 'nd';
+        case 3: return 'rd';
+        default: return 'th';
+    }
 }
 
-// The student names the current class filter should scope everything down
-// to. "All Classes" (empty filter) returns the full roster+submissions
-// union; a specific class returns just that class's roster — submissions
+function gradeDisplayLabel(grade) {
+    if (grade === '(No Grade Listed)') return 'Ungraded';
+    const trimmed = String(grade).trim();
+    const n = parseInt(trimmed, 10);
+    if (isNaN(n) || String(n) !== trimmed) return trimmed + ' Grade';
+    return n + ordinalSuffix(n) + ' Grade';
+}
+
+// The current filter, resolved into a scope object every renderer works
+// from: { type: 'all'|'grade'|'class', label, students, gradeGroup? }.
+// "All Students" (empty filter) covers the full roster+submissions union;
+// a grade or class scopes down to that grade's/class's roster. Submissions
 // under a name that doesn't match any roster row only show up under "All
-// Classes," since there's no way to know which class they belong to.
+// Students," since there's no way to know which grade/class they belong to.
+function getFilterScope() {
+    const raw = el('classFilterSelect').value;
+    const byGrade = dashboardData.rosterByGrade || [];
+
+    if (raw && raw.indexOf('grade:') === 0) {
+        const gradeLabel = raw.slice('grade:'.length);
+        const gradeGroup = byGrade.find(g => g.grade === gradeLabel);
+        const students = gradeGroup
+            ? [...new Set(gradeGroup.classes.flatMap(c => c.students))].sort((a, b) => a.localeCompare(b))
+            : [];
+        return { type: 'grade', label: gradeDisplayLabel(gradeLabel), students, gradeGroup };
+    }
+
+    if (raw && raw.indexOf('class:') === 0) {
+        const classId = raw.slice('class:'.length);
+        for (const g of byGrade) {
+            const c = g.classes.find(cls => cls.classId === classId);
+            if (c) {
+                return {
+                    type: 'class',
+                    label: `${c.className} — ${c.teacherName}`,
+                    students: [...c.students].sort((a, b) => a.localeCompare(b)),
+                    classObj: c
+                };
+            }
+        }
+    }
+
+    return { type: 'all', label: 'All Students', students: allStudentNames() };
+}
+
 function getFilteredStudentNames() {
-    const cls = getSelectedClass();
-    if (!cls) return allStudentNames();
-    return [...cls.students].sort((a, b) => a.localeCompare(b));
+    return getFilterScope().students;
 }
 
 function filterRowsByStudents(rows, allowedNames) {
@@ -279,30 +321,56 @@ function filterRowsByStudents(rows, allowedNames) {
     return (rows || []).filter(row => allowed.has((row['Student Name'] || '').toString().trim()));
 }
 
-// Populates the class filter dropdown from dashboardData.rosterByClass.
-// Hidden entirely if the Roster sheet doesn't exist yet or has nothing to
-// filter between. Preserves the current selection across re-population
+// Populates the class filter dropdown from dashboardData.rosterByGrade:
+// "All Students", then either a flat list of classes (if there's only one
+// grade bucket — including schools with no Grade column at all) or, when
+// there's more than one grade, a grade-level option plus an <optgroup> of
+// that grade's classes, for each grade. Hidden entirely if the Roster sheet
+// doesn't exist yet. Preserves the current selection across re-population
 // (e.g. after Refresh).
 function populateClassFilter() {
     const select = el('classFilterSelect');
     const current = select.value;
-    const classes = dashboardData.rosterByClass || [];
+    const byGrade = dashboardData.rosterByGrade || [];
 
     select.innerHTML = '';
     const allOpt = document.createElement('option');
     allOpt.value = '';
-    allOpt.textContent = 'All Classes';
+    allOpt.textContent = 'All Students';
     select.appendChild(allOpt);
-    classes.forEach(c => {
+
+    const appendClassOption = (parent, c) => {
         const opt = document.createElement('option');
-        opt.value = c.classId;
+        opt.value = 'class:' + c.classId;
         opt.textContent = `${c.className} — ${c.teacherName}`;
-        select.appendChild(opt);
+        parent.appendChild(opt);
+    };
+
+    byGrade.forEach(g => {
+        const gradeLabel = gradeDisplayLabel(g.grade);
+        if (byGrade.length > 1) {
+            const gradeOpt = document.createElement('option');
+            gradeOpt.value = 'grade:' + g.grade;
+            gradeOpt.textContent = gradeLabel;
+            select.appendChild(gradeOpt);
+
+            const group = document.createElement('optgroup');
+            group.label = gradeLabel;
+            g.classes.forEach(c => appendClassOption(group, c));
+            select.appendChild(group);
+        } else {
+            // Nothing to group by — just list classes flat, like before.
+            g.classes.forEach(c => appendClassOption(select, c));
+        }
     });
 
-    select.style.display = classes.length ? '' : 'none';
-    if (current && classes.some(c => c.classId === current)) select.value = current;
-    select.onchange = renderAll;
+    const hasAnyClasses = byGrade.some(g => g.classes.length);
+    select.style.display = hasAnyClasses ? '' : 'none';
+    if (current && [...select.options].some(o => o.value === current)) select.value = current;
+    // A filter change should re-render everything (History's student list,
+    // Averages' numbers and trend summary) without jumping the teacher back
+    // to a different tab.
+    select.onchange = renderTabContents;
 }
 
 // --- Login -------------------------------------------------------------
@@ -355,7 +423,11 @@ el('refreshBtn').addEventListener('click', () => {
     .then(res => res.json())
     .then(data => {
         el('loadingArea').style.display = 'none';
-        if (data.success) { dashboardData = data.data; renderTabContents(); }
+        if (data.success) {
+            dashboardData = data.data;
+            dashboardDataVersion++; // invalidate cached trend summaries — the numbers may have changed
+            renderTabContents();
+        }
     });
 });
 
@@ -371,87 +443,35 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // Called once right after login: shows the dashboard on the default
-// (Summary) tab and renders every tab's contents.
+// (Class Averages, All Students) tab and renders every tab's contents.
 function renderAll() {
     el('loadingArea').style.display = 'none';
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    document.querySelector('.tab-btn[data-tab="summary"]').classList.add('active');
-    el('summaryPanel').classList.add('active');
+    document.querySelector('.tab-btn[data-tab="averages"]').classList.add('active');
+    el('averagesPanel').classList.add('active');
+    dashboardDataVersion++;
     renderTabContents();
 }
 
 // Re-renders every tab's contents WITHOUT changing which tab is currently
-// visible — used by Refresh and after saving Settings, so the teacher isn't
-// unexpectedly bounced back to Student Summary.
+// visible — used by Refresh and whenever the grade/class filter changes, so
+// the teacher isn't unexpectedly bounced to a different tab.
 function renderTabContents() {
     populateClassFilter();
-    renderSummary();
     renderHistoryControls();
     renderHistory();
     renderAverages();
 }
 
-// --- Summary tab -----------------------------------------------------
+// --- Per-student score cells --------------------------------------------
+// Used only by the individual-student table on the Class Averages tab
+// (shown once a specific class is selected). Every cell shows the overall
+// score plus everything else that sheet row has — per-subsection scores
+// and the AI-generated recommendation/summary text — not just the top-line
+// number, per the "include all the information from the sheet" ask.
 
-function renderSummary() {
-    const cls = getSelectedClass();
-    const students = getFilteredStudentNames();
-    const latest = {
-        vocab: latestByStudent(dashboardData.vocab || []),
-        knowledge: latestByStudent(dashboardData.knowledge || []),
-        skills: latestByStudent(dashboardData.skills || []),
-        navi: latestByStudent(dashboardData.navi || []),
-        audio: latestByStudent(dashboardData.audio || [])
-    };
-
-    const rosterConnected = (dashboardData.roster || []).length > 0;
-    const classLabel = cls ? ` in ${cls.className} (${cls.teacherName})` : '';
-    if (!students.length) {
-        el('summaryCount').textContent = cls ? `No students found in ${cls.className} (${cls.teacherName}).` : '';
-    } else if (rosterConnected) {
-        const submitted = new Set();
-        ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
-            (dashboardData[key] || []).forEach(row => {
-                const n = (row['Student Name'] || '').toString().trim();
-                if (n && students.includes(n)) submitted.add(n);
-            });
-        });
-        el('summaryCount').textContent =
-            `${students.length} student${students.length === 1 ? '' : 's'}${classLabel}, ${submitted.size} with at least one submission.`;
-    } else {
-        el('summaryCount').textContent =
-            `${students.length} student${students.length === 1 ? '' : 's'} with at least one submission. ` +
-            `No roster sheet found yet, so students who haven't submitted anything don't show up here — add a "Roster" tab (Student Name / Class / Teacher columns) to your Sheet to enable this.`;
-    }
-
-    const tbody = el('summaryTbody');
-    tbody.innerHTML = '';
-
-    if (!students.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 6;
-        td.className = 'empty-state';
-        td.textContent = cls ? `No students found in ${cls.className} (${cls.teacherName}).` : 'No submissions yet.';
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-        return;
-    }
-
-    students.forEach(name => {
-        const tr = document.createElement('tr');
-        appendCell(tr, name, false);
-        appendVocabCell(tr, latest.vocab.get(name));
-        appendFractionCell(tr, latest.knowledge.get(name), 'Total Score');
-        appendSkillsCell(tr, latest.skills.get(name));
-        appendFractionCell(tr, latest.navi.get(name), 'Total Score');
-        appendAudioCell(tr, latest.audio.get(name));
-        tbody.appendChild(tr);
-    });
-}
-
-function appendCell(tr, text, isPct) {
+function appendCell(tr, text) {
     const td = document.createElement('td');
     td.textContent = text;
     tr.appendChild(td);
@@ -464,18 +484,15 @@ function pctSpan(pct, extraText) {
     return span;
 }
 
-function appendFractionCell(tr, row, field) {
-    const td = document.createElement('td');
-    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
-    const frac = parseFraction(row[field]);
-    td.appendChild(pctSpan(frac ? frac.pct : null));
-    if (frac) {
-        const small = document.createElement('div');
-        small.className = 'muted';
-        small.textContent = row[field];
-        td.appendChild(small);
-    }
-    tr.appendChild(td);
+// Appends one small muted line per truthy string in `lines` beneath
+// whatever badge/span was already added to the cell.
+function appendDetailLines(td, lines) {
+    lines.filter(Boolean).forEach(line => {
+        const div = document.createElement('div');
+        div.className = 'muted';
+        div.textContent = line;
+        td.appendChild(div);
+    });
 }
 
 function appendVocabCell(tr, row) {
@@ -483,10 +500,26 @@ function appendVocabCell(tr, row) {
     if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
     const frac = parseFraction(row['Score']);
     td.appendChild(pctSpan(frac ? frac.pct : null));
-    const small = document.createElement('div');
-    small.className = 'muted';
-    small.textContent = (row['Assigned Group'] ? 'Group ' + row['Assigned Group'] + ' · ' : '') + (row['Score'] || '');
-    td.appendChild(small);
+    appendDetailLines(td, [
+        row['Assigned Group'] ? 'Group ' + row['Assigned Group'] : null,
+        row['Score'] ? 'Score: ' + row['Score'] : null,
+        (row['Mistakes'] && row['Mistakes'] !== 'None') ? 'Missed: ' + row['Mistakes'] : null
+    ]);
+    tr.appendChild(td);
+}
+
+// Shared by Chumash Knowledge and Navi Knowledge, which have the same
+// shape: an overall "Total Score" fraction, per-sefer fraction columns,
+// and an "Areas to Focus On" recommendation.
+function appendFractionCell(tr, row, field, subsections, notesField) {
+    const td = document.createElement('td');
+    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+    const frac = parseFraction(row[field]);
+    td.appendChild(pctSpan(frac ? frac.pct : null));
+    const lines = [row[field] ? 'Total: ' + row[field] : null];
+    (subsections || []).forEach(sub => { if (row[sub]) lines.push(sub + ': ' + row[sub]); });
+    if (notesField && row[notesField]) lines.push(row[notesField]);
+    appendDetailLines(td, lines);
     tr.appendChild(td);
 }
 
@@ -495,10 +528,10 @@ function appendSkillsCell(tr, row) {
     if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
     const pct = parsePercent(row['Percentage']);
     td.appendChild(pctSpan(pct));
-    const small = document.createElement('div');
-    small.className = 'muted';
-    small.textContent = row['Total Score'] || '';
-    td.appendChild(small);
+    const lines = [row['Total Score'] ? 'Total: ' + row['Total Score'] : null];
+    SKILLS_SUBSECTIONS.forEach(sub => { if (row[sub]) lines.push(sub + ': ' + row[sub]); });
+    if (row['Areas to Focus On']) lines.push(row['Areas to Focus On']);
+    appendDetailLines(td, lines);
     tr.appendChild(td);
 }
 
@@ -511,11 +544,70 @@ function appendAudioCell(tr, row) {
     span.className = 'cell-pct ' + pctClass(pct);
     span.textContent = OVERALL_LABELS[overall] || ('Overall: ' + row['Overall']);
     td.appendChild(span);
-    const small = document.createElement('div');
-    small.className = 'muted';
-    small.textContent = row['WPM'] ? row['WPM'] + ' WPM' : '';
-    td.appendChild(small);
+    const lines = [row['WPM'] ? row['WPM'] + ' WPM' : null];
+    AUDIO_DIMENSIONS.filter(d => d !== 'Overall').forEach(dim => { if (row[dim]) lines.push(dim + ': ' + row[dim]); });
+    if (row['Reading Summary']) lines.push(row['Reading Summary']);
+    if (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None') lines.push('Mistakes: ' + row['Specific Mistakes']);
+    appendDetailLines(td, lines);
     tr.appendChild(td);
+}
+
+// Builds the "each student's scores for each section" table shown at the
+// bottom of Class Averages once a specific class is selected.
+function buildStudentScoresTable(scope) {
+    const wrap = document.createElement('div');
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = 'Individual student scores';
+    wrap.appendChild(heading);
+
+    const latest = {
+        vocab: latestByStudent(dashboardData.vocab || []),
+        knowledge: latestByStudent(dashboardData.knowledge || []),
+        skills: latestByStudent(dashboardData.skills || []),
+        navi: latestByStudent(dashboardData.navi || []),
+        audio: latestByStudent(dashboardData.audio || [])
+    };
+
+    const tableWrap = document.createElement('div');
+    tableWrap.style.overflowX = 'auto';
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Student', 'Vocabulary', 'Chumash Knowledge', 'Chumash Skills', 'Navi Knowledge', 'Reading Fluency'].forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+
+    if (!scope.students.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.className = 'empty-state';
+        td.textContent = `No students found in ${scope.label}.`;
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    } else {
+        scope.students.forEach(name => {
+            const tr = document.createElement('tr');
+            appendCell(tr, name);
+            appendVocabCell(tr, latest.vocab.get(name));
+            appendFractionCell(tr, latest.knowledge.get(name), 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On');
+            appendSkillsCell(tr, latest.skills.get(name));
+            appendFractionCell(tr, latest.navi.get(name), 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On');
+            appendAudioCell(tr, latest.audio.get(name));
+            tbody.appendChild(tr);
+        });
+    }
+
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
 }
 
 // --- History tab -----------------------------------------------------
@@ -623,24 +715,200 @@ function renderHistory() {
 }
 
 // --- Class averages tab -----------------------------------------------
+// This is the landing tab. With "All Students" selected it shows averages
+// and an AI-generated trends summary across the whole middle school; a
+// grade filter scopes that down to one grade; a class filter scopes it
+// down to one class AND adds a per-student score table underneath.
 
 function renderAverages() {
     const panel = el('averagesPanel');
     panel.innerHTML = '';
 
-    const allowedNames = getFilteredStudentNames();
+    const scope = getFilterScope();
+    const allowedNames = scope.students;
     const vocabRows = filterRowsByStudents(dashboardData.vocab, allowedNames);
     const knowledgeRows = filterRowsByStudents(dashboardData.knowledge, allowedNames);
     const skillsRows = filterRowsByStudents(dashboardData.skills, allowedNames);
     const naviRows = filterRowsByStudents(dashboardData.navi, allowedNames);
     const audioRows = filterRowsByStudents(dashboardData.audio, allowedNames);
 
+    panel.appendChild(buildScopeHeading(scope));
+    panel.appendChild(buildTrendsSummaryBlock(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows));
     panel.appendChild(buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows));
     panel.appendChild(buildSubsectionAverages('Chumash Knowledge — average score by Sefer', knowledgeRows, KNOWLEDGE_SUBSECTIONS));
     panel.appendChild(buildSubsectionAverages('Chumash Skills — average score by category', skillsRows, SKILLS_SUBSECTIONS));
     panel.appendChild(buildSubsectionAverages('Navi Knowledge — average score by Sefer', naviRows, NAVI_SUBSECTIONS));
     panel.appendChild(buildAudioAverages(audioRows));
     panel.appendChild(buildVocabAverages(vocabRows));
+
+    if (scope.type === 'class') {
+        panel.appendChild(buildStudentScoresTable(scope));
+    }
+}
+
+function buildScopeHeading(scope) {
+    const wrap = document.createElement('div');
+    const h = document.createElement('div');
+    h.className = 'scope-heading';
+    h.textContent = scope.label;
+    wrap.appendChild(h);
+
+    const sub = document.createElement('div');
+    sub.className = 'scope-subtitle';
+    const count = scope.students.length;
+    let text = count + ' student' + (count === 1 ? '' : 's');
+    if (!(dashboardData.roster || []).length) {
+        text += ' with at least one submission. No roster sheet found yet, so students who haven\'t submitted anything don\'t show up, and there\'s no grade/class breakdown — add a "Roster" tab (Student Name / Grade / Class / Teacher columns) to your Sheet to enable this.';
+    }
+    sub.textContent = text;
+    wrap.appendChild(sub);
+    return wrap;
+}
+
+// --- AI trends summary ---------------------------------------------------
+
+// Computes plain-number averages (no DOM) for one slice of rows, reused for
+// both the current scope and each subgroup breakdown row. `skipBreakdown`
+// omits per-subsection detail for subgroup rows, to keep the prompt sent to
+// Gemini compact.
+function computeSectionAverageList(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows, skipBreakdown) {
+    const avgField = (rows, field) => {
+        const pcts = rows.map(r => { const f = parseFraction(r[field]); return f ? f.pct : null; }).filter(p => p !== null);
+        return average(pcts);
+    };
+    const subAvgs = (rows, subsections) => subsections.map(sub => {
+        const pcts = rows.map(r => { const f = parseFraction(r[sub]); return f ? f.pct : null; }).filter(p => p !== null);
+        return { label: sub, averagePct: average(pcts) };
+    });
+
+    const vocabPcts = vocabRows.map(r => { const f = parseFraction(r['Score']); return f ? f.pct : null; }).filter(p => p !== null);
+    const skillsPcts = skillsRows.map(r => parsePercent(r['Percentage'])).filter(p => p !== null);
+    const audioOverallVals = audioRows.map(r => Number(r['Overall'])).filter(n => !isNaN(n));
+    const wpmVals = audioRows.map(r => Number(r['WPM'])).filter(n => !isNaN(n));
+
+    const list = [
+        { section: 'Vocabulary', averagePct: average(vocabPcts) },
+        { section: 'Chumash Knowledge', averagePct: avgField(knowledgeRows, 'Total Score') },
+        { section: 'Chumash Skills', averagePct: average(skillsPcts) },
+        { section: 'Navi Knowledge', averagePct: avgField(naviRows, 'Total Score') },
+        { section: 'Reading Fluency', averageOutOf4: average(audioOverallVals), averageWpm: average(wpmVals) }
+    ];
+    if (!skipBreakdown) {
+        list[1].breakdown = subAvgs(knowledgeRows, KNOWLEDGE_SUBSECTIONS);
+        list[2].breakdown = subAvgs(skillsRows, SKILLS_SUBSECTIONS);
+        list[3].breakdown = subAvgs(naviRows, NAVI_SUBSECTIONS);
+    }
+    return list;
+}
+
+function buildSubgroupStats(label, students) {
+    const vocabRows = filterRowsByStudents(dashboardData.vocab, students);
+    const knowledgeRows = filterRowsByStudents(dashboardData.knowledge, students);
+    const skillsRows = filterRowsByStudents(dashboardData.skills, students);
+    const naviRows = filterRowsByStudents(dashboardData.navi, students);
+    const audioRows = filterRowsByStudents(dashboardData.audio, students);
+    return {
+        label,
+        studentCount: students.length,
+        sectionAverages: computeSectionAverageList(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows, true)
+    };
+}
+
+// Builds the aggregate-only payload sent to the backend for the AI trends
+// summary. Includes a grade breakdown when viewing All Students (so Gemini
+// can flag e.g. "6th grade is pulling the Skills average down"), or a class
+// breakdown when viewing a single grade. No breakdown at the class level —
+// there's nothing smaller to compare against.
+function computeTrendsStats(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows) {
+    const submissionCounts = {
+        Vocabulary: vocabRows.length,
+        'Chumash Knowledge': knowledgeRows.length,
+        'Chumash Skills': skillsRows.length,
+        'Navi Knowledge': naviRows.length,
+        'Reading Fluency': audioRows.length
+    };
+    const totalSubmissions = Object.keys(submissionCounts).reduce((sum, k) => sum + submissionCounts[k], 0);
+
+    const stats = {
+        scopeLabel: scope.label,
+        studentCount: scope.students.length,
+        submissionCounts,
+        totalSubmissions,
+        sectionAverages: computeSectionAverageList(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows)
+    };
+
+    const byGrade = dashboardData.rosterByGrade || [];
+    if (scope.type === 'all' && byGrade.length > 1) {
+        stats.subgroupKind = 'grade';
+        stats.subgroups = byGrade.map(g => {
+            const students = [...new Set(g.classes.flatMap(c => c.students))];
+            return buildSubgroupStats(gradeDisplayLabel(g.grade), students);
+        });
+    } else if (scope.type === 'grade' && scope.gradeGroup && scope.gradeGroup.classes.length > 1) {
+        stats.subgroupKind = 'class';
+        stats.subgroups = scope.gradeGroup.classes.map(c =>
+            buildSubgroupStats(`${c.className} — ${c.teacherName}`, c.students)
+        );
+    }
+
+    return stats;
+}
+
+// Renders the AI-generated narrative block at the top of Class Averages.
+// Caches by filter value + data version so switching tabs/filters back and
+// forth doesn't keep re-calling Gemini, and guards against a slow response
+// landing after the teacher has already moved on to a different filter.
+function buildTrendsSummaryBlock(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows) {
+    const wrap = document.createElement('div');
+    wrap.className = 'trends-block';
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = 'Overview & Trends';
+    wrap.appendChild(heading);
+
+    const body = document.createElement('p');
+    body.className = 'trends-text muted';
+    wrap.appendChild(body);
+
+    const stats = computeTrendsStats(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows);
+    if (stats.totalSubmissions === 0) {
+        body.textContent = `No submissions yet for ${scope.label} — check back once students have completed at least one check-in.`;
+        return wrap;
+    }
+
+    const cacheKey = (el('classFilterSelect').value || '') + '::' + dashboardDataVersion;
+    if (trendsSummaryCache[cacheKey]) {
+        body.className = 'trends-text';
+        body.textContent = trendsSummaryCache[cacheKey];
+        return wrap;
+    }
+
+    body.textContent = 'Generating summary…';
+
+    const myToken = ++trendsRenderToken;
+    const password = el('passwordInput').value;
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getTrendsSummary', payload: { password, stats } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (myToken !== trendsRenderToken) return; // superseded by a newer render
+        if (data.success && data.summary) {
+            trendsSummaryCache[cacheKey] = data.summary;
+            body.className = 'trends-text';
+            body.textContent = data.summary;
+        } else {
+            body.textContent = data.error || 'Could not generate a summary right now.';
+        }
+    })
+    .catch(() => {
+        if (myToken !== trendsRenderToken) return;
+        body.textContent = 'Could not reach the server to generate a summary.';
+    });
+
+    return wrap;
 }
 
 function buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows) {
