@@ -412,33 +412,60 @@ function buildPoolItems(bank, tagField, weakTags, perTagCount, filterFn) {
     return items;
 }
 
+// Every section the student has attempted always shows up on the sheet —
+// weak-tag-targeted questions first (if any misses have been logged for
+// it yet), topped up with general random practice from the whole section
+// so there's always something there to "keep sharp," even for a section
+// they've been acing, or one they attempted before missed-item logging
+// existed and so has no targeted data yet.
+const GENERAL_PRACTICE_COUNT = 4;
+
 function buildReviewSheet(focus, statusEl, contentEl) {
     const sections = [];
 
-    if (focus.vocab.weakTags.length) {
-        const items = buildPoolItems(QUESTION_BANK, 'ri', focus.vocab.weakTags, 1);
+    if (focus.vocab.attempted) {
+        let items = buildPoolItems(QUESTION_BANK, 'ri', focus.vocab.weakTags, 1);
+        let note = items.length ? `Words to review: ${items.map(q => q.display).join(', ')}` : null;
+        if (items.length < GENERAL_PRACTICE_COUNT) {
+            const used = new Set(items.map(q => q.ri));
+            const fill = pickRandom(QUESTION_BANK.filter(q => !used.has(q.ri)), GENERAL_PRACTICE_COUNT - items.length);
+            items = items.concat(fill);
+            note = note ? note + ' — plus a few extra words to keep sharp.' : 'A mix of vocabulary words to keep sharp.';
+        }
         if (items.length) sections.push({
-            title: 'Vocabulary',
-            note: `Words to review: ${items.map(q => q.display).join(', ')}`,
+            title: 'Vocabulary', note,
             items: items.map(q => ({ questionText: q.display, options: q.options, correct: q.meaning, hebrewWord: true }))
         });
     }
 
-    if (focus.knowledge.weakTags.length) {
-        const items = buildPoolItems(KNOWLEDGE_BANK, 'sefer', focus.knowledge.weakTags, 3);
+    if (focus.knowledge.attempted) {
+        let items = buildPoolItems(KNOWLEDGE_BANK, 'sefer', focus.knowledge.weakTags, 3);
+        let note = focus.knowledge.weakTags.length ? `Focus areas: ${focus.knowledge.weakTags.join(', ')}` : null;
+        if (items.length < GENERAL_PRACTICE_COUNT) {
+            const used = new Set(items.map(q => q.num));
+            const fill = pickRandom(KNOWLEDGE_BANK.filter(q => !used.has(q.num)), GENERAL_PRACTICE_COUNT - items.length);
+            items = items.concat(fill);
+            note = note ? note + ' — plus a few extra to keep sharp.' : 'A mix of Chumash Knowledge questions to keep sharp.';
+        }
         if (items.length) sections.push({
-            title: 'Chumash Knowledge',
-            note: `Focus areas: ${focus.knowledge.weakTags.join(', ')}`,
+            title: 'Chumash Knowledge', note,
             items: items.map(q => ({ questionText: q.question, options: q.options, correct: q.correct }))
         });
     }
 
-    if (focus.skills.weakTags.length) {
-        const labels = focus.skills.weakTags.map(s => SKILLS_STANDARD_LABEL[s] || ('Standard ' + s));
-        const items = buildPoolItems(SKILLS_BANK, 'standard', focus.skills.weakTags, 3, q => !q.fixed);
+    if (focus.skills.attempted) {
+        let items = buildPoolItems(SKILLS_BANK, 'standard', focus.skills.weakTags, 3, q => !q.fixed);
+        let note = focus.skills.weakTags.length
+            ? `Focus areas: ${focus.skills.weakTags.map(s => SKILLS_STANDARD_LABEL[s] || ('Standard ' + s)).join(', ')}`
+            : null;
+        if (items.length < GENERAL_PRACTICE_COUNT) {
+            const used = new Set(items.map(q => q.id));
+            const fill = pickRandom(SKILLS_BANK.filter(q => !q.fixed && !used.has(q.id)), GENERAL_PRACTICE_COUNT - items.length);
+            items = items.concat(fill);
+            note = note ? note + ' — plus a few extra to keep sharp.' : 'A mix of Chumash Skills questions to keep sharp.';
+        }
         if (items.length) sections.push({
-            title: 'Chumash Skills',
-            note: `Focus areas: ${labels.join(', ')}`,
+            title: 'Chumash Skills', note,
             items: items.map(q => ({
                 questionText: q.question, options: q.options, correct: q.correct,
                 richText: true, rashiOptions: q.displayMode === 'rashi_options'
@@ -446,24 +473,27 @@ function buildReviewSheet(focus, statusEl, contentEl) {
         });
     }
 
-    if (focus.navi.weakTags.length) {
-        const items = buildPoolItems(NAVI_BANK, 'sefer', focus.navi.weakTags, 3);
+    if (focus.navi.attempted) {
+        let items = buildPoolItems(NAVI_BANK, 'sefer', focus.navi.weakTags, 3);
+        let note = focus.navi.weakTags.length ? `Focus areas: ${focus.navi.weakTags.join(', ')}` : null;
+        if (items.length < GENERAL_PRACTICE_COUNT) {
+            const used = new Set(items.map(q => q.num));
+            const fill = pickRandom(NAVI_BANK.filter(q => !used.has(q.num)), GENERAL_PRACTICE_COUNT - items.length);
+            items = items.concat(fill);
+            note = note ? note + ' — plus a few extra to keep sharp.' : 'A mix of Navi Knowledge questions to keep sharp.';
+        }
         if (items.length) sections.push({
-            title: 'Navi Knowledge',
-            note: `Focus areas: ${focus.navi.weakTags.join(', ')}`,
+            title: 'Navi Knowledge', note,
             items: items.map(q => ({ questionText: q.question, options: q.options, correct: q.correct }))
         });
     }
 
     if (!sections.length) {
-        const attemptedAny = focus.vocab.attempted || focus.knowledge.attempted || focus.skills.attempted || focus.navi.attempted;
-        statusEl.textContent = attemptedAny
-            ? "Nothing to review right now — your last check-ins looked great! Keep it up."
-            : "Complete a check-in first, then come back here for a review sheet built just for you.";
+        statusEl.textContent = "Complete a check-in first, then come back here for a review sheet built just for you.";
         return;
     }
 
-    statusEl.textContent = 'Here are some questions focused on your recent check-ins. Try each one, then click "Show Answer" to check yourself.';
+    statusEl.textContent = 'Here are some questions based on your recent check-ins — a mix of focused review and general practice. Try each one, then click "Show Answer" to check yourself.';
 
     sections.forEach(section => {
         const heading = document.createElement('div');
