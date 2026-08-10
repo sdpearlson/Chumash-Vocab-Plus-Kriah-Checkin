@@ -84,6 +84,29 @@
   .trends-block .section-heading { margin-top: 0; }
   .trends-text { margin: 6px 0 0; line-height: 1.55; }
   td .muted { font-size: 0.8rem; line-height: 1.4; }
+  .nested-toggle {
+    display: inline-flex; align-items: center; gap: 8px; background: none; border: none;
+    padding: 0; margin: 0; font: inherit; font-weight: inherit; color: inherit; cursor: pointer;
+  }
+  .nested-toggle:hover { color: #5a4e42; }
+  .nested-arrow { color: #a6998a; font-size: 0.75rem; width: 10px; display: inline-block; }
+  .nested-breakdown { margin: 6px 0 4px; padding-left: 6px; }
+  .student-row { border-bottom: 1px solid #ece5d8; }
+  .student-row:last-child { border-bottom: none; }
+  .student-toggle {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: none; border: none; padding: 12px 4px; font-family: 'Lora', serif;
+    font-size: 1rem; font-weight: 600; color: #2c2520; cursor: pointer;
+  }
+  .student-toggle:hover { background: #fdfbf5; }
+  .student-arrow { color: #a6998a; font-size: 0.75rem; width: 12px; display: inline-block; }
+  .student-detail { padding: 0 0 12px; }
+  .detail-row { display: flex; align-items: baseline; gap: 14px; padding: 7px 0 7px 28px; border-top: 1px dashed #f1ebe0; flex-wrap: wrap; }
+  .detail-row:first-child { border-top: none; }
+  .detail-label { width: 150px; flex-shrink: 0; font-weight: 600; font-size: 0.85rem; color: #6b6055; }
+  .detail-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
+  .detail-chip { color: #6b6055; }
+  .detail-chip.muted { color: #a6998a; }
 </style>
 </head>
 <body>
@@ -175,9 +198,20 @@ function parseFraction(str) {
     return { correct, total, pct: (correct / total) * 100 };
 }
 
-function parsePercent(str) {
-    if (typeof str !== 'string') return null;
-    const m = str.match(/(-?\d+(?:\.\d+)?)\s*%/);
+// Handles two shapes: the plain "78%" string this app writes, AND a raw
+// number. The latter shows up because Google Sheets sometimes silently
+// auto-converts a written "78%" string into a percentage-formatted NUMBER
+// cell — so getValues() hands back 0.78 (or occasionally 78, if the sheet
+// wasn't percent-formatted) instead of the text "78%". This is why
+// Chumash Skills specifically could show no percentage: it's the only
+// section whose overall score comes from a "%"-suffixed column instead of
+// an "X / Y" fraction column, so it's the only one exposed to this quirk.
+function parsePercent(val) {
+    if (typeof val === 'number' && !isNaN(val)) {
+        return val <= 1 ? val * 100 : val;
+    }
+    if (typeof val !== 'string') return null;
+    const m = val.match(/(-?\d+(?:\.\d+)?)\s*%/);
     return m ? parseFloat(m[1]) : null;
 }
 
@@ -464,18 +498,14 @@ function renderTabContents() {
     renderAverages();
 }
 
-// --- Per-student score cells --------------------------------------------
-// Used only by the individual-student table on the Class Averages tab
-// (shown once a specific class is selected). Every cell shows the overall
-// score plus everything else that sheet row has — per-subsection scores
-// and the AI-generated recommendation/summary text — not just the top-line
-// number, per the "include all the information from the sheet" ask.
-
-function appendCell(tr, text) {
-    const td = document.createElement('td');
-    td.textContent = text;
-    tr.appendChild(td);
-}
+// --- Per-student score rows ----------------------------------------------
+// Used only by the individual-student accordion on the Class Averages tab
+// (shown once a specific class is selected). Each student's name expands
+// to one horizontal line per section — Vocabulary, Chumash Knowledge, etc.
+// — showing the overall score plus everything else that sheet row has:
+// per-subsection scores and the AI-generated recommendation/summary text,
+// not just the top-line number, per the "include all the information from
+// the sheet" ask.
 
 function pctSpan(pct, extraText) {
     const span = document.createElement('span');
@@ -484,76 +514,119 @@ function pctSpan(pct, extraText) {
     return span;
 }
 
-// Appends one small muted line per truthy string in `lines` beneath
-// whatever badge/span was already added to the cell.
-function appendDetailLines(td, lines) {
-    lines.filter(Boolean).forEach(line => {
-        const div = document.createElement('div');
-        div.className = 'muted';
-        div.textContent = line;
-        td.appendChild(div);
-    });
+function detailChip(text, muted) {
+    const span = document.createElement('span');
+    span.className = 'detail-chip' + (muted ? ' muted' : '');
+    span.textContent = text;
+    return span;
 }
 
-function appendVocabCell(tr, row) {
-    const td = document.createElement('td');
-    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+// Builds one section's horizontal detail line: a score badge followed by
+// whatever chips apply (sub-scores, group/mistake notes, AI recommendation
+// text), all laid out left-to-right and wrapping as needed.
+function buildVocabDetailLine(row) {
+    const line = document.createElement('div');
+    line.className = 'detail-line';
+    if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const frac = parseFraction(row['Score']);
-    td.appendChild(pctSpan(frac ? frac.pct : null));
-    appendDetailLines(td, [
-        row['Assigned Group'] ? 'Group ' + row['Assigned Group'] : null,
-        row['Score'] ? 'Score: ' + row['Score'] : null,
-        (row['Mistakes'] && row['Mistakes'] !== 'None') ? 'Missed: ' + row['Mistakes'] : null
-    ]);
-    tr.appendChild(td);
+    line.appendChild(pctSpan(frac ? frac.pct : null));
+    if (row['Assigned Group']) line.appendChild(detailChip('Group ' + row['Assigned Group'], true));
+    if (row['Score']) line.appendChild(detailChip(row['Score'], true));
+    if (row['Mistakes'] && row['Mistakes'] !== 'None') line.appendChild(detailChip('Missed: ' + row['Mistakes'], true));
+    return line;
 }
 
 // Shared by Chumash Knowledge and Navi Knowledge, which have the same
 // shape: an overall "Total Score" fraction, per-sefer fraction columns,
 // and an "Areas to Focus On" recommendation.
-function appendFractionCell(tr, row, field, subsections, notesField) {
-    const td = document.createElement('td');
-    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+function buildFractionDetailLine(row, field, subsections, notesField) {
+    const line = document.createElement('div');
+    line.className = 'detail-line';
+    if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const frac = parseFraction(row[field]);
-    td.appendChild(pctSpan(frac ? frac.pct : null));
-    const lines = [row[field] ? 'Total: ' + row[field] : null];
-    (subsections || []).forEach(sub => { if (row[sub]) lines.push(sub + ': ' + row[sub]); });
-    if (notesField && row[notesField]) lines.push(row[notesField]);
-    appendDetailLines(td, lines);
-    tr.appendChild(td);
+    line.appendChild(pctSpan(frac ? frac.pct : null));
+    if (row[field]) line.appendChild(detailChip('Total: ' + row[field], true));
+    (subsections || []).forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
+    if (notesField && row[notesField]) line.appendChild(detailChip(row[notesField], true));
+    return line;
 }
 
-function appendSkillsCell(tr, row) {
-    const td = document.createElement('td');
-    if (!row) { td.innerHTML = '<span class="muted">No attempt yet</span>'; tr.appendChild(td); return; }
+function buildSkillsDetailLine(row) {
+    const line = document.createElement('div');
+    line.className = 'detail-line';
+    if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const pct = parsePercent(row['Percentage']);
-    td.appendChild(pctSpan(pct));
-    const lines = [row['Total Score'] ? 'Total: ' + row['Total Score'] : null];
-    SKILLS_SUBSECTIONS.forEach(sub => { if (row[sub]) lines.push(sub + ': ' + row[sub]); });
-    if (row['Areas to Focus On']) lines.push(row['Areas to Focus On']);
-    appendDetailLines(td, lines);
-    tr.appendChild(td);
+    line.appendChild(pctSpan(pct));
+    if (row['Total Score']) line.appendChild(detailChip('Total: ' + row['Total Score'], true));
+    SKILLS_SUBSECTIONS.forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
+    if (row['Areas to Focus On']) line.appendChild(detailChip(row['Areas to Focus On'], true));
+    return line;
 }
 
-function appendAudioCell(tr, row) {
-    const td = document.createElement('td');
-    if (!row) { td.innerHTML = '<span class="muted">No submission yet</span>'; tr.appendChild(td); return; }
+function buildAudioDetailLine(row) {
+    const line = document.createElement('div');
+    line.className = 'detail-line';
+    if (!row) { line.appendChild(detailChip('No submission yet', true)); return line; }
     const overall = Number(row['Overall']);
     const pct = isNaN(overall) ? null : (overall / 4) * 100;
     const span = document.createElement('span');
     span.className = 'cell-pct ' + pctClass(pct);
     span.textContent = OVERALL_LABELS[overall] || ('Overall: ' + row['Overall']);
-    td.appendChild(span);
-    const lines = [row['WPM'] ? row['WPM'] + ' WPM' : null];
-    AUDIO_DIMENSIONS.filter(d => d !== 'Overall').forEach(dim => { if (row[dim]) lines.push(dim + ': ' + row[dim]); });
-    if (row['Reading Summary']) lines.push(row['Reading Summary']);
-    if (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None') lines.push('Mistakes: ' + row['Specific Mistakes']);
-    appendDetailLines(td, lines);
-    tr.appendChild(td);
+    line.appendChild(span);
+    if (row['WPM']) line.appendChild(detailChip(row['WPM'] + ' WPM', true));
+    AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => { if (row[dim]) line.appendChild(detailChip(dim + ': ' + row[dim], true)); });
+    if (row['Reading Summary']) line.appendChild(detailChip(row['Reading Summary'], true));
+    if (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None') line.appendChild(detailChip('Mistakes: ' + row['Specific Mistakes'], true));
+    return line;
 }
 
-// Builds the "each student's scores for each section" table shown at the
-// bottom of Class Averages once a specific class is selected.
+function buildDetailRow(label, lineNode) {
+    const row = document.createElement('div');
+    row.className = 'detail-row';
+    const labelDiv = document.createElement('div');
+    labelDiv.className = 'detail-label';
+    labelDiv.textContent = label;
+    row.appendChild(labelDiv);
+    row.appendChild(lineNode);
+    return row;
+}
+
+// One collapsible row: student name + arrow, expanding to the five section
+// detail rows, indented underneath.
+function buildStudentRow(name, latest) {
+    const rowWrap = document.createElement('div');
+    rowWrap.className = 'student-row';
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'student-toggle';
+    const arrow = document.createElement('span');
+    arrow.className = 'student-arrow';
+    arrow.textContent = '▸';
+    toggle.appendChild(arrow);
+    toggle.appendChild(document.createTextNode(' ' + name));
+    rowWrap.appendChild(toggle);
+
+    const detail = document.createElement('div');
+    detail.className = 'student-detail hidden';
+    detail.appendChild(buildDetailRow('Vocabulary', buildVocabDetailLine(latest.vocab.get(name))));
+    detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(latest.knowledge.get(name), 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(latest.skills.get(name))));
+    detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(latest.navi.get(name), 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(latest.audio.get(name))));
+    rowWrap.appendChild(detail);
+
+    toggle.addEventListener('click', () => {
+        const wasHidden = detail.classList.contains('hidden');
+        detail.classList.toggle('hidden');
+        arrow.textContent = wasHidden ? '▾' : '▸';
+    });
+
+    return rowWrap;
+}
+
+// Builds the "each student's scores for each section" accordion shown at
+// the bottom of Class Averages once a specific class is selected.
 function buildStudentScoresTable(scope) {
     const wrap = document.createElement('div');
     const heading = document.createElement('div');
@@ -569,44 +642,15 @@ function buildStudentScoresTable(scope) {
         audio: latestByStudent(dashboardData.audio || [])
     };
 
-    const tableWrap = document.createElement('div');
-    tableWrap.style.overflowX = 'auto';
-    const table = document.createElement('table');
-    const thead = document.createElement('thead');
-    const headRow = document.createElement('tr');
-    ['Student', 'Vocabulary', 'Chumash Knowledge', 'Chumash Skills', 'Navi Knowledge', 'Reading Fluency'].forEach(h => {
-        const th = document.createElement('th');
-        th.textContent = h;
-        headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-    table.appendChild(tbody);
-
     if (!scope.students.length) {
-        const tr = document.createElement('tr');
-        const td = document.createElement('td');
-        td.colSpan = 6;
-        td.className = 'empty-state';
-        td.textContent = `No students found in ${scope.label}.`;
-        tr.appendChild(td);
-        tbody.appendChild(tr);
-    } else {
-        scope.students.forEach(name => {
-            const tr = document.createElement('tr');
-            appendCell(tr, name);
-            appendVocabCell(tr, latest.vocab.get(name));
-            appendFractionCell(tr, latest.knowledge.get(name), 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On');
-            appendSkillsCell(tr, latest.skills.get(name));
-            appendFractionCell(tr, latest.navi.get(name), 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On');
-            appendAudioCell(tr, latest.audio.get(name));
-            tbody.appendChild(tr);
-        });
+        const empty = document.createElement('p');
+        empty.className = 'empty-state';
+        empty.textContent = `No students found in ${scope.label}.`;
+        wrap.appendChild(empty);
+        return wrap;
     }
 
-    tableWrap.appendChild(table);
-    wrap.appendChild(tableWrap);
+    scope.students.forEach(name => wrap.appendChild(buildStudentRow(name, latest)));
     return wrap;
 }
 
@@ -735,9 +779,18 @@ function renderAverages() {
     panel.appendChild(buildScopeHeading(scope));
     panel.appendChild(buildTrendsSummaryBlock(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows));
     panel.appendChild(buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audioRows));
-    panel.appendChild(buildSubsectionAverages('Chumash Knowledge — average score by Sefer', knowledgeRows, KNOWLEDGE_SUBSECTIONS));
-    panel.appendChild(buildSubsectionAverages('Chumash Skills — average score by category', skillsRows, SKILLS_SUBSECTIONS));
-    panel.appendChild(buildSubsectionAverages('Navi Knowledge — average score by Sefer', naviRows, NAVI_SUBSECTIONS));
+    panel.appendChild(buildSectionAverages(
+        'Chumash Knowledge — average score by Sefer', knowledgeRows, KNOWLEDGE_SUBSECTIONS,
+        r => { const f = parseFraction(r['Total Score']); return f ? f.pct : null; }
+    ));
+    panel.appendChild(buildSectionAverages(
+        'Chumash Skills — average score by category', skillsRows, SKILLS_SUBSECTIONS,
+        r => parsePercent(r['Percentage'])
+    ));
+    panel.appendChild(buildSectionAverages(
+        'Navi Knowledge — average score by Sefer', naviRows, NAVI_SUBSECTIONS,
+        r => { const f = parseFraction(r['Total Score']); return f ? f.pct : null; }
+    ));
     panel.appendChild(buildAudioAverages(audioRows));
     panel.appendChild(buildVocabAverages(vocabRows));
 
@@ -932,37 +985,7 @@ function buildOverallStats(vocabRows, knowledgeRows, skillsRows, naviRows, audio
     return wrap;
 }
 
-// Builds one "average % per subsection" block (e.g. average per Sefer for
-// Knowledge/Navi, average per category for Skills), sorted weakest-first so
-// the topics most worth reviewing float to the top.
-function buildSubsectionAverages(title, rows, subsections) {
-    const wrap = document.createElement('div');
-    const heading = document.createElement('div');
-    heading.className = 'section-heading';
-    heading.textContent = title;
-    wrap.appendChild(heading);
-
-    if (!rows || !rows.length) {
-        const empty = document.createElement('p');
-        empty.className = 'empty-state';
-        empty.textContent = 'No submissions yet.';
-        wrap.appendChild(empty);
-        return wrap;
-    }
-
-    const averages = subsections.map(sub => {
-        const pcts = rows.map(r => {
-            const f = parseFraction(r[sub]);
-            return f ? f.pct : null;
-        }).filter(p => p !== null);
-        return { label: sub, pct: average(pcts) };
-    }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
-
-    averages.forEach(a => wrap.appendChild(buildBarRow(a.label, a.pct)));
-    return wrap;
-}
-
-function buildBarRow(label, pct) {
+function buildBarRow(label, pct, displayOverride) {
     const row = document.createElement('div');
     row.className = 'bar-row';
     const labelDiv = document.createElement('div');
@@ -978,47 +1001,109 @@ function buildBarRow(label, pct) {
     row.appendChild(track);
     const valueDiv = document.createElement('div');
     valueDiv.className = 'bar-value';
-    valueDiv.textContent = fmtPct(pct);
+    valueDiv.textContent = displayOverride !== undefined && displayOverride !== null ? displayOverride : fmtPct(pct);
     row.appendChild(valueDiv);
     return row;
 }
 
-function buildAudioAverages(rows) {
+// Shared shell for a section's averages: a heading with a click-to-expand
+// arrow, an always-visible "Overall average" bar, and a nested, initially
+// collapsed breakdown built by `buildBreakdown(nestedContainer)`. This is
+// what gives Chumash Knowledge/Skills/Navi/Reading Fluency their "overall
+// number now, sub-scores on demand" look.
+function buildCollapsibleAverages(title, overallPct, overallDisplay, rows, buildBreakdown) {
     const wrap = document.createElement('div');
+
     const heading = document.createElement('div');
     heading.className = 'section-heading';
-    heading.textContent = 'Reading Fluency — average rubric scores (out of 4)';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'nested-toggle';
+    const arrow = document.createElement('span');
+    arrow.className = 'nested-arrow';
+    arrow.textContent = '▸';
+    toggle.appendChild(arrow);
+    toggle.appendChild(document.createTextNode(' ' + title));
+    heading.appendChild(toggle);
     wrap.appendChild(heading);
 
-    rows = rows || [];
-    if (!rows.length) {
+    wrap.appendChild(buildBarRow('Overall average', overallPct, overallDisplay));
+
+    const nested = document.createElement('div');
+    nested.className = 'nested-breakdown hidden';
+    wrap.appendChild(nested);
+
+    if (!rows || !rows.length) {
         const empty = document.createElement('p');
         empty.className = 'empty-state';
         empty.textContent = 'No submissions yet.';
-        wrap.appendChild(empty);
-        return wrap;
+        nested.appendChild(empty);
+    } else {
+        buildBreakdown(nested);
     }
 
-    AUDIO_DIMENSIONS.forEach(dim => {
-        const vals = rows.map(r => Number(r[dim])).filter(n => !isNaN(n));
-        const avg = average(vals);
-        const pct = avg === null ? null : (avg / 4) * 100;
-        const row = buildBarRow(dim, pct);
-        // Show the raw /4 average instead of a percentage for this section.
-        row.lastChild.textContent = avg === null ? '—' : avg.toFixed(1) + ' / 4';
-        wrap.appendChild(row);
+    toggle.addEventListener('click', () => {
+        const wasHidden = nested.classList.contains('hidden');
+        nested.classList.toggle('hidden');
+        arrow.textContent = wasHidden ? '▾' : '▸';
     });
 
-    const wpmVals = rows.map(r => Number(r['WPM'])).filter(n => !isNaN(n));
-    const avgWpm = average(wpmVals);
-    const wpmRow = document.createElement('div');
-    wpmRow.className = 'stat-row';
-    const l = document.createElement('span'); l.textContent = 'Average words per minute';
-    const v = document.createElement('span'); v.style.fontWeight = '600';
-    v.textContent = avgWpm === null ? '—' : Math.round(avgWpm) + ' WPM';
-    wpmRow.appendChild(l); wpmRow.appendChild(v);
-    wrap.appendChild(wpmRow);
     return wrap;
+}
+
+// Builds one section's collapsible averages block (Chumash Knowledge,
+// Chumash Skills, Navi Knowledge — all fraction/percentage-based). The
+// per-subsection breakdown is sorted weakest-first so the topics most
+// worth reviewing float to the top once expanded. `overallPctExtractor`
+// reads whichever field holds that section's overall score for one row
+// (Knowledge/Navi use the "Total Score" fraction; Skills uses the
+// "Percentage" column instead).
+function buildSectionAverages(title, rows, subsections, overallPctExtractor) {
+    rows = rows || [];
+    const overallPcts = rows.map(overallPctExtractor).filter(p => p !== null && p !== undefined && !isNaN(p));
+    const overallPct = average(overallPcts);
+
+    return buildCollapsibleAverages(title, overallPct, null, rows, (nested) => {
+        const averages = subsections.map(sub => {
+            const pcts = rows.map(r => {
+                const f = parseFraction(r[sub]);
+                return f ? f.pct : null;
+            }).filter(p => p !== null);
+            return { label: sub, pct: average(pcts) };
+        }).sort((a, b) => (a.pct ?? 999) - (b.pct ?? 999));
+
+        averages.forEach(a => nested.appendChild(buildBarRow(a.label, a.pct)));
+    });
+}
+
+function buildAudioAverages(rows) {
+    rows = rows || [];
+    const overallVals = rows.map(r => Number(r['Overall'])).filter(n => !isNaN(n));
+    const overallAvg = average(overallVals);
+    const overallPct = overallAvg === null ? null : (overallAvg / 4) * 100;
+    const overallDisplay = overallAvg === null ? '—' : overallAvg.toFixed(1) + ' / 4';
+
+    return buildCollapsibleAverages(
+        'Reading Fluency — average rubric scores (out of 4)', overallPct, overallDisplay, rows,
+        (nested) => {
+            AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => {
+                const vals = rows.map(r => Number(r[dim])).filter(n => !isNaN(n));
+                const avg = average(vals);
+                const pct = avg === null ? null : (avg / 4) * 100;
+                nested.appendChild(buildBarRow(dim, pct, avg === null ? '—' : avg.toFixed(1) + ' / 4'));
+            });
+
+            const wpmVals = rows.map(r => Number(r['WPM'])).filter(n => !isNaN(n));
+            const avgWpm = average(wpmVals);
+            const wpmRow = document.createElement('div');
+            wpmRow.className = 'stat-row';
+            const l = document.createElement('span'); l.textContent = 'Average words per minute';
+            const v = document.createElement('span'); v.style.fontWeight = '600';
+            v.textContent = avgWpm === null ? '—' : Math.round(avgWpm) + ' WPM';
+            wpmRow.appendChild(l); wpmRow.appendChild(v);
+            nested.appendChild(wpmRow);
+        }
+    );
 }
 
 function buildVocabAverages(rows) {
