@@ -62,6 +62,23 @@
   .rashi-passage { font-family: 'RashiScript', serif; font-size: 1.4rem; line-height: 1.7; }
   .rashi-translation { font-style: italic; color: #8a7d6d; font-size: 0.95rem; }
   .pasuk-passage { font-family: 'StamScript', serif; font-size: 1.5rem; line-height: 1.7; }
+  .intake-container.wide { max-width: 720px; text-align: left; }
+  .review-status { color: #a6998a; font-size: 0.95rem; text-align: center; }
+  .review-section-heading {
+    font-family: 'Frank Ruhl Libre', serif; font-size: 1.3rem; margin: 28px 0 6px; color: #2c2520; text-align: left;
+  }
+  .review-section-heading:first-child { margin-top: 0; }
+  .review-focus-note { color: #8a7d6d; font-size: 0.9rem; margin: 0 0 14px; text-align: left; }
+  .review-question { border: 1px solid #ece5d8; border-radius: 4px; padding: 16px 18px; margin-bottom: 14px; text-align: left; }
+  .review-question-text { font-size: 1.05rem; margin-bottom: 10px; }
+  .review-question-text.hebrew-word { font-family: 'Frank Ruhl Libre', serif; font-size: 1.7rem; text-align: center; }
+  .review-options { margin: 0 0 10px; padding-left: 0; list-style: none; }
+  .review-options li { padding: 4px 0; font-size: 0.98rem; }
+  .review-letter { font-weight: 600; margin-right: 8px; }
+  .review-answer-toggle {
+    background: none; border: none; color: #a6998a; text-decoration: underline; cursor: pointer; font-size: 0.85rem; padding: 0;
+  }
+  .review-answer { margin-top: 8px; font-weight: 600; color: #3c6b2e; }
 </style>
 </head>
 <body>
@@ -89,6 +106,7 @@
         <button class="intake-choice" onclick="startSkillsIntro()">Chumash Skills Check-In</button>
         <button class="intake-choice" onclick="startNaviIntro()">Navi Knowledge Check-In</button>
         <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
+        <button class="intake-choice" onclick="startReviewSheet()">Generate Review Sheet</button>
     </div>
     <div id="selfEvalArea" class="hidden">
         <p>Choose your vocab comfort level:</p>
@@ -123,6 +141,12 @@
         <button id="audioBackBtn" class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="resultsArea" class="hidden"><h2 id="resultsTitle">Task Complete</h2><p id="resultsDesc"></p>
+        <button class="intake-choice" onclick="goToHub()">Back to Menu</button>
+    </div>
+    <div id="reviewSheetArea" class="hidden">
+        <h2>Personalized Review Sheet</h2>
+        <p id="reviewSheetStatus" class="review-status"></p>
+        <div id="reviewSheetContent"></div>
         <button class="intake-choice" onclick="goToHub()">Back to Menu</button>
     </div>
 </div>
@@ -173,7 +197,8 @@ function goToHub() {
         activeStream = null;
     }
     hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('naviIntroArea'); hide('quizArea'); hide('quizProgress');
-    hide('audioArea'); hide('resultsArea');
+    hide('audioArea'); hide('resultsArea'); hide('reviewSheetArea');
+    document.querySelector('.intake-container').classList.remove('wide');
 
     // Reset per-attempt state so a fresh vocab/knowledge/skills run or recording starts clean.
     state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
@@ -328,6 +353,179 @@ document.getElementById('nameSubmitBtn').addEventListener('click', () => {
 
 function hide(id) { document.getElementById(id).classList.add('hidden'); }
 function show(id) { document.getElementById(id).classList.remove('hidden'); }
+
+// --- Generate Review Sheet -------------------------------------------
+// Builds a self-study worksheet targeted at whatever this specific student
+// has actually been getting wrong: the backend logs missed words/sefarim/
+// standards on every submission (see getReviewFocus in Code.gs.txt), and
+// this pulls matching questions straight from the same reviewed banks used
+// for the real check-ins — no new AI-generated content, so nothing here
+// risks inventing incorrect Hebrew/Torah text. Random sampling each time
+// means clicking again later can turn up a different mix of questions
+// covering the same weak spots, even without expanding the banks.
+
+function startReviewSheet() {
+    hide('hubMenuArea');
+    document.querySelector('.intake-container').classList.add('wide');
+    show('reviewSheetArea');
+
+    const statusEl = document.getElementById('reviewSheetStatus');
+    const contentEl = document.getElementById('reviewSheetContent');
+    statusEl.textContent = 'Building your review sheet…';
+    contentEl.innerHTML = '';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getReviewFocus', payload: { name: state.name } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data || !data.success || !data.focus) {
+            statusEl.textContent = "Couldn't build a review sheet right now — please try again in a bit.";
+            return;
+        }
+        buildReviewSheet(data.focus, statusEl, contentEl);
+    })
+    .catch(() => {
+        statusEl.textContent = "Couldn't reach the server to build your review sheet.";
+    });
+}
+
+function pickRandom(arr, n) {
+    return [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+}
+
+// Pulls up to `perTagCount` random questions from `bank` for EACH tag in
+// `weakTags` (matched against `tagField`), so every weak spot gets its own
+// slice of practice instead of one big shared pool where an unlucky shuffle
+// could leave a weak tag with nothing. `filterFn`, if given, further
+// restricts the pool (used to exclude the fixed-format Rashi questions,
+// which need their own special renderer the review sheet doesn't build).
+function buildPoolItems(bank, tagField, weakTags, perTagCount, filterFn) {
+    const items = [];
+    weakTags.forEach(tag => {
+        let pool = bank.filter(q => q[tagField] === tag);
+        if (filterFn) pool = pool.filter(filterFn);
+        items.push(...pickRandom(pool, Math.min(pool.length, perTagCount)));
+    });
+    return items;
+}
+
+function buildReviewSheet(focus, statusEl, contentEl) {
+    const sections = [];
+
+    if (focus.vocab.weakTags.length) {
+        const items = buildPoolItems(QUESTION_BANK, 'ri', focus.vocab.weakTags, 1);
+        if (items.length) sections.push({
+            title: 'Vocabulary',
+            note: `Words to review: ${items.map(q => q.display).join(', ')}`,
+            items: items.map(q => ({ questionText: q.display, options: q.options, correct: q.meaning, hebrewWord: true }))
+        });
+    }
+
+    if (focus.knowledge.weakTags.length) {
+        const items = buildPoolItems(KNOWLEDGE_BANK, 'sefer', focus.knowledge.weakTags, 3);
+        if (items.length) sections.push({
+            title: 'Chumash Knowledge',
+            note: `Focus areas: ${focus.knowledge.weakTags.join(', ')}`,
+            items: items.map(q => ({ questionText: q.question, options: q.options, correct: q.correct }))
+        });
+    }
+
+    if (focus.skills.weakTags.length) {
+        const labels = focus.skills.weakTags.map(s => SKILLS_STANDARD_LABEL[s] || ('Standard ' + s));
+        const items = buildPoolItems(SKILLS_BANK, 'standard', focus.skills.weakTags, 3, q => !q.fixed);
+        if (items.length) sections.push({
+            title: 'Chumash Skills',
+            note: `Focus areas: ${labels.join(', ')}`,
+            items: items.map(q => ({
+                questionText: q.question, options: q.options, correct: q.correct,
+                richText: true, rashiOptions: q.displayMode === 'rashi_options'
+            }))
+        });
+    }
+
+    if (focus.navi.weakTags.length) {
+        const items = buildPoolItems(NAVI_BANK, 'sefer', focus.navi.weakTags, 3);
+        if (items.length) sections.push({
+            title: 'Navi Knowledge',
+            note: `Focus areas: ${focus.navi.weakTags.join(', ')}`,
+            items: items.map(q => ({ questionText: q.question, options: q.options, correct: q.correct }))
+        });
+    }
+
+    if (!sections.length) {
+        const attemptedAny = focus.vocab.attempted || focus.knowledge.attempted || focus.skills.attempted || focus.navi.attempted;
+        statusEl.textContent = attemptedAny
+            ? "Nothing to review right now — your last check-ins looked great! Keep it up."
+            : "Complete a check-in first, then come back here for a review sheet built just for you.";
+        return;
+    }
+
+    statusEl.textContent = 'Here are some questions focused on your recent check-ins. Try each one, then click "Show Answer" to check yourself.';
+
+    sections.forEach(section => {
+        const heading = document.createElement('div');
+        heading.className = 'review-section-heading';
+        heading.textContent = section.title;
+        contentEl.appendChild(heading);
+
+        const note = document.createElement('p');
+        note.className = 'review-focus-note';
+        note.textContent = section.note;
+        contentEl.appendChild(note);
+
+        section.items.forEach(item => contentEl.appendChild(buildReviewQuestion(item)));
+    });
+}
+
+function buildReviewQuestion(item) {
+    const wrap = document.createElement('div');
+    wrap.className = 'review-question';
+
+    const qText = document.createElement('div');
+    qText.className = 'review-question-text' + (item.hebrewWord ? ' hebrew-word' : '');
+    if (item.richText) {
+        renderRichText(qText, item.questionText);
+    } else {
+        qText.textContent = item.questionText;
+    }
+    wrap.appendChild(qText);
+
+    const list = document.createElement('ul');
+    list.className = 'review-options';
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+    const shuffledOptions = pickRandom([...new Set(item.options)], item.options.length);
+    shuffledOptions.forEach((opt, i) => {
+        const li = document.createElement('li');
+        if (item.rashiOptions) li.classList.add('rashi-font');
+        const letterSpan = document.createElement('span');
+        letterSpan.className = 'review-letter';
+        letterSpan.textContent = letters[i] + '.';
+        li.appendChild(letterSpan);
+        li.appendChild(document.createTextNode(opt));
+        list.appendChild(li);
+    });
+    wrap.appendChild(list);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'review-answer-toggle';
+    toggle.textContent = 'Show Answer';
+    const answer = document.createElement('div');
+    answer.className = 'review-answer hidden';
+    answer.textContent = 'Answer: ' + item.correct;
+    toggle.addEventListener('click', () => {
+        const wasHidden = answer.classList.contains('hidden');
+        answer.classList.toggle('hidden');
+        toggle.textContent = wasHidden ? 'Hide Answer' : 'Show Answer';
+    });
+    wrap.appendChild(toggle);
+    wrap.appendChild(answer);
+
+    return wrap;
+}
 
 // Official Chumash Vocabulary list (281 words), reviewed and
 // re-tiered by the teacher.
