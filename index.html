@@ -526,7 +526,10 @@ function buildReviewQuestion(item) {
     const list = document.createElement('ul');
     list.className = 'review-options';
     const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
-    const shuffledOptions = pickRandom([...new Set(item.options)], item.options.length);
+    const dedupedOptions = [...new Set(item.options)];
+    const catchAllOptions = dedupedOptions.filter(isCatchAllOption);
+    const restOptions = pickRandom(dedupedOptions.filter(o => !isCatchAllOption(o)), dedupedOptions.length);
+    const shuffledOptions = [...restOptions, ...catchAllOptions];
     shuffledOptions.forEach((opt, i) => {
         const li = document.createElement('li');
         if (item.rashiOptions) li.classList.add('rashi-font');
@@ -952,11 +955,23 @@ function renderRichText(container, text) {
     });
 }
 
+// "All of the above" (or similar catch-all) options are a giveaway if they
+// land anywhere but last, since a student can spot one at a glance among
+// otherwise-specific choices. Keeping the catch-all pinned to the end (while
+// the rest of the options still shuffle normally) matches standard
+// test-writing convention.
+function isCatchAllOption(text) {
+    return /^(all of (the above|these)|none of the above)\b/i.test((text || '').trim());
+}
+
 // Shared option-button + skip-button builders, used by every quiz type.
 function renderOptionButtons(container, options, onPick, rashiOptions) {
     // De-dupe option text (a few facts/words legitimately share the same
     // English answer) so no two buttons ever show identical text.
-    const choices = [...new Set(options)].sort(() => Math.random() - 0.5);
+    const deduped = [...new Set(options)];
+    const catchAll = deduped.filter(isCatchAllOption);
+    const rest = deduped.filter(o => !isCatchAllOption(o)).sort(() => Math.random() - 0.5);
+    const choices = [...rest, ...catchAll];
     const choicesDiv = document.createElement('div');
     choicesDiv.className = 'intake-choices';
     choices.forEach(o => {
@@ -3874,7 +3889,7 @@ const SKILLS_BANK = [
       "id": 1007,
       "standard": 25,
       "rank": 1,
-      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט-כ): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.\n\nWhat is the דִּבּוּר הַמַּתְחִיל of רַשִׁ\"י on this פָּסוּק?",
+      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.\n\nWhat is the דִּבּוּר הַמַּתְחִיל of רַשִׁ\"י on this פָּסוּק?",
       "options": [
           "הַמְבַקְשִׁים אֶת נַפְשֶׁךָ",
           "הֵשִׁיב כְּמֵת",
@@ -3884,21 +3899,21 @@ const SKILLS_BANK = [
       "correct": "כִּי מֵתוּ כָּל הָאֲנָשִׁים",
       "correctLetter": "C",
       "fixed": true,
-      "pasukRef": "שְׁמוֹת ד:יט-כ",
-      "groupKey": "שְׁמוֹת ד:יט-כ",
+      "pasukRef": "שְׁמוֹת ד:יט",
+      "groupKey": "שְׁמוֹת ד:יט",
       "groupOrder": 6,
       "orderWithinGroup": 1,
-      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ",
-      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.",
-      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.",
+      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ",
+      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.",
+      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.",
       "questionStem": "What is the דִּבּוּר הַמַּתְחִיל of רַשִׁ\"י on this פָּסוּק?",
-      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’ And Moshe took his wife and his sons and set them upon the donkey, and returned to the land of Egypt; and Moshe took the staff of God in his hand."
+      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’"
   },
   {
       "id": 1008,
       "standard": 26,
       "rank": 1,
-      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט-כ): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.\n\nWhich choice best describes the question of רַשִׁ\"י?",
+      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.\n\nWhich choice best describes the question of רַשִׁ\"י?",
       "options": [
           "How could מֹשֶׁה return to Egypt if his life was still in danger from דָּתָן וַאֲבִירָם, who were still alive?",
           "Why is a poor person considered like he is dead?",
@@ -3908,21 +3923,21 @@ const SKILLS_BANK = [
       "correct": "Why did הַשֵּׁם tell מֹשֶׁה that all the people who wanted to kill him were dead if דָּתָן וַאֲבִירָם, who wanted to kill מֹשֶׁה, were still alive?",
       "correctLetter": "C",
       "fixed": true,
-      "pasukRef": "שְׁמוֹת ד:יט-כ",
-      "groupKey": "שְׁמוֹת ד:יט-כ",
+      "pasukRef": "שְׁמוֹת ד:יט",
+      "groupKey": "שְׁמוֹת ד:יט",
       "groupOrder": 6,
       "orderWithinGroup": 2,
-      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ",
-      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.",
-      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.",
+      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ",
+      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.",
+      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.",
       "questionStem": "Which choice best describes the question of רַשִׁ\"י?",
-      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’ And Moshe took his wife and his sons and set them upon the donkey, and returned to the land of Egypt; and Moshe took the staff of God in his hand."
+      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’"
   },
   {
       "id": 1009,
       "standard": 23,
       "rank": 1,
-      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט-כ): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.\n\nWhich lesson can be derived from this רַשִׁ\"י?",
+      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.\n\nWhich lesson can be derived from this רַשִׁ\"י?",
       "options": [
           "If a person attempts to harm a צַדִּיק they should expect to be punished with a sin equivalent to death",
           "The wicked are not inscribed in the Book of Life as evidenced from דָּתָן וַאֲבִירָם who were considered dead",
@@ -3932,21 +3947,21 @@ const SKILLS_BANK = [
       "correct": "One should treat a poor person kindly since the poor often can't act or speak up for themselves",
       "correctLetter": "C",
       "fixed": true,
-      "pasukRef": "שְׁמוֹת ד:יט-כ",
-      "groupKey": "שְׁמוֹת ד:יט-כ",
+      "pasukRef": "שְׁמוֹת ד:יט",
+      "groupKey": "שְׁמוֹת ד:יט",
       "groupOrder": 6,
       "orderWithinGroup": 3,
-      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ",
-      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.",
-      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.",
+      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ",
+      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת.",
+      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead.",
       "questionStem": "Which lesson can be derived from this רַשִׁ\"י?",
-      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’ And Moshe took his wife and his sons and set them upon the donkey, and returned to the land of Egypt; and Moshe took the staff of God in his hand."
+      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’"
   },
   {
       "id": 1010,
       "standard": 26,
       "rank": 1,
-      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:יט-כ): וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ\n\nרַשִׁ\"י (Hebrew): **כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.\n\nרַשִׁ\"י (English translation): ‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.\n\nWhich choice best describes the question of the second רַשִׁ\"י above?",
+      "question": "Read the following פָּסוּק and Rashi's comment on it:\n\nפָּסוּק (שְׁמוֹת ד:כ): וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ\n\nרַשִׁ\"י (Hebrew): **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.\n\nרַשִׁ\"י (English translation): ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.\n\nWhich choice best describes the question of רַשִׁ\"י?",
       "options": [
           "How will מָשִׁיחַ appear when he arrives to reveal himself to בְּנֵי יִשְׂרָאֵל?",
           "Why does the פָּסוּק write \"עַל הַחֲמוֹר\" (on the donkey) and not \"עַל חֲמוֹר\" (on a donkey)?",
@@ -3956,15 +3971,15 @@ const SKILLS_BANK = [
       "correct": "Why does the פָּסוּק write \"עַל הַחֲמוֹר\" (on the donkey) and not \"עַל חֲמוֹר\" (on a donkey)?",
       "correctLetter": "B",
       "fixed": true,
-      "pasukRef": "שְׁמוֹת ד:יט-כ",
-      "groupKey": "שְׁמוֹת ד:יט-כ",
-      "groupOrder": 6,
-      "orderWithinGroup": 4,
-      "pasukText": "וַיֹּאמֶר ה' אֶל מֹשֶׁה בְּמִדְיָן לֵךְ שֻׁב מִצְרָיִם כִּי מֵתוּ כָּל הָאֲנָשִׁים הַמְבַקְשִׁים אֶת נַפְשֶׁךָ. וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ",
-      "rashiHe": "**כִּי מֵתוּ כָּל הָאֲנָשִׁים.** וּמִי הָיוּ? דָּתָן וַאֲבִירָם, שֶׁלֹּא מֵתוּ אֶלָּא הֶעֱנִיּוּ מִנְּכָסֵיהֶם, שֶׁהֶעָנִי חָשׁוּב כַּמֵּת. **עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.",
-      "rashiEn": "‘For all the men... have died’ — Who were they? Datan and Aviram; they did not actually die, but rather became impoverished, for a poor person is considered as if he were dead. ‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.",
-      "questionStem": "Which choice best describes the question of the second רַשִׁ\"י above?",
-      "pasukEn": "And Hashem said to Moshe in Midian, ‘Go, return to Egypt, for all the men who sought your life have died.’ And Moshe took his wife and his sons and set them upon the donkey, and returned to the land of Egypt; and Moshe took the staff of God in his hand."
+      "pasukRef": "שְׁמוֹת ד:כ",
+      "groupKey": "שְׁמוֹת ד:כ",
+      "groupOrder": 7,
+      "orderWithinGroup": 1,
+      "pasukText": "וַיִּקַּח מֹשֶׁה אֶת אִשְׁתּוֹ וְאֶת בָּנָיו וַיַּרְכִּבֵם עַל הַחֲמֹר וַיָּשָׁב אַרְצָה מִצְרָיִם וַיִּקַּח מֹשֶׁה אֶת מַטֵּה הָאֱלֹקִים בְּיָדוֹ",
+      "rashiHe": "**עַל הַחֲמֹר.** הַחֲמוֹר הַמְיֻחָד, זֶהוּ הַחֲמוֹר שֶׁחָבַשׁ אַבְרָהָם לַעֲקֵדַת יִצְחָק, וְהוּא הַחֲמוֹר שֶׁעָתִיד מֶלֶךְ הַמָּשִׁיחַ לְהִגָּלוֹת עָלָיו.",
+      "rashiEn": "‘Upon the donkey’ — the definite article points to a specific, well-known donkey: the same one Avraham saddled for the binding of Yitzchak, and the same one Mashiach will one day ride when he is revealed.",
+      "questionStem": "Which choice best describes the question of רַשִׁ\"י?",
+      "pasukEn": "And Moshe took his wife and his sons and set them upon the donkey, and returned to the land of Egypt; and Moshe took the staff of God in his hand."
   },
   {
       "id": 1011,
@@ -3982,7 +3997,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "שְׁמוֹת לב:ב",
       "groupKey": "שְׁמוֹת לב:ב",
-      "groupOrder": 7,
+      "groupOrder": 8,
       "orderWithinGroup": 1,
       "pasukText": "וַיֹּאמֶר אֲלֵהֶם אַהֲרֹן פָּרְקוּ נִזְמֵי הַזָּהָב אֲשֶׁר בְּאָזְנֵי נְשֵׁיכֶם בְּנֵיכֶם וּבְנֹתֵיכֶם וְהָבִיאוּ אֵלָי",
       "rashiHe": "**בְּאָזְנֵי נְשֵׁיכֶם.** אָמַר אַהֲרֹן בְּלִבּוֹ: הַנָּשִׁים וְהַבָּנִים חָסִים עַל תַּכְשִׁיטֵיהֶם, בֵּינְתַיִם יָבֹא מֹשֶׁה וְיֵרֵד.",
@@ -4006,7 +4021,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "שְׁמוֹת לב:ב",
       "groupKey": "שְׁמוֹת לב:ב",
-      "groupOrder": 7,
+      "groupOrder": 8,
       "orderWithinGroup": 2,
       "pasukText": "וַיֹּאמֶר אֲלֵהֶם אַהֲרֹן פָּרְקוּ נִזְמֵי הַזָּהָב אֲשֶׁר בְּאָזְנֵי נְשֵׁיכֶם בְּנֵיכֶם וּבְנֹתֵיכֶם וְהָבִיאוּ אֵלָי",
       "rashiHe": "**בְּאָזְנֵי נְשֵׁיכֶם.** אָמַר אַהֲרֹן בְּלִבּוֹ: הַנָּשִׁים וְהַבָּנִים חָסִים עַל תַּכְשִׁיטֵיהֶם, בֵּינְתַיִם יָבֹא מֹשֶׁה וְיֵרֵד.",
@@ -4030,7 +4045,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "וַיִּקְרָא יד:לג-לד",
       "groupKey": "וַיִּקְרָא יד:לג-לד",
-      "groupOrder": 8,
+      "groupOrder": 9,
       "orderWithinGroup": 1,
       "pasukText": "וַיְדַבֵּר ה' אֶל מֹשֶׁה וְאֶל אַהֲרֹן לֵאמֹר. כִּי תָבֹאוּ אֶל אֶרֶץ כְּנַעַן אֲשֶׁר אֲנִי נֹתֵן לָכֶם לַאֲחֻזָּה וְנָתַתִּי נֶגַע צָרַעַת בְּבֵית אֶרֶץ אֲחֻזַּתְכֶם",
       "rashiHe": "**וְנָתַתִּי נֶגַע צָרַעַת.** בְּשׂוֹרָה טוֹבָה הִיא לָהֶם, שֶׁהֶאֱמוֹרִיִּים הָיוּ מַטְמִינִים מַטְמוֹנִיּוֹת שֶׁל זָהָב בְּקִירוֹת בֵּיתֵיהֶם כָּל אַרְבָּעִים שָׁנָה שֶׁהָיוּ יִשְׂרָאֵל בַּמִּדְבָּר, וְעַל יְדֵי הַנֶּגַע נוֹתֵץ הַבַּיִת וּמוֹצְאָן.",
@@ -4054,7 +4069,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "וַיִּקְרָא יד:לג-לד",
       "groupKey": "וַיִּקְרָא יד:לג-לד",
-      "groupOrder": 8,
+      "groupOrder": 9,
       "orderWithinGroup": 2,
       "pasukText": "וַיְדַבֵּר ה' אֶל מֹשֶׁה וְאֶל אַהֲרֹן לֵאמֹר. כִּי תָבֹאוּ אֶל אֶרֶץ כְּנַעַן אֲשֶׁר אֲנִי נֹתֵן לָכֶם לַאֲחֻזָּה וְנָתַתִּי נֶגַע צָרַעַת בְּבֵית אֶרֶץ אֲחֻזַּתְכֶם",
       "rashiHe": "**וְנָתַתִּי נֶגַע צָרַעַת.** בְּשׂוֹרָה טוֹבָה הִיא לָהֶם, שֶׁהֶאֱמוֹרִיִּים הָיוּ מַטְמִינִים מַטְמוֹנִיּוֹת שֶׁל זָהָב בְּקִירוֹת בֵּיתֵיהֶם כָּל אַרְבָּעִים שָׁנָה שֶׁהָיוּ יִשְׂרָאֵל בַּמִּדְבָּר, וְעַל יְדֵי הַנֶּגַע נוֹתֵץ הַבַּיִת וּמוֹצְאָן.",
@@ -4078,7 +4093,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "וַיִּקְרָא כ:ט",
       "groupKey": "וַיִּקְרָא כ:ט",
-      "groupOrder": 9,
+      "groupOrder": 10,
       "orderWithinGroup": 1,
       "pasukText": "כִּי אִישׁ אִישׁ אֲשֶׁר יְקַלֵּל אֶת אָבִיו וְאֶת אִמּוֹ מוֹת יוּמָת אָבִיו וְאִמּוֹ קִלֵּל דָּמָיו בּוֹ",
       "rashiHe": "**אָבִיו וְאִמּוֹ קִלֵּל.** לְרַבּוֹת לְאַחַר מִיתָה.",
@@ -4102,7 +4117,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "וַיִּקְרָא כ:ט",
       "groupKey": "וַיִּקְרָא כ:ט",
-      "groupOrder": 9,
+      "groupOrder": 10,
       "orderWithinGroup": 2,
       "pasukText": "כִּי אִישׁ אִישׁ אֲשֶׁר יְקַלֵּל אֶת אָבִיו וְאֶת אִמּוֹ מוֹת יוּמָת אָבִיו וְאִמּוֹ קִלֵּל דָּמָיו בּוֹ",
       "rashiHe": "**אָבִיו וְאִמּוֹ קִלֵּל.** לְרַבּוֹת לְאַחַר מִיתָה.",
@@ -4126,7 +4141,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "דְּבָרִים יב:כג",
       "groupKey": "דְּבָרִים יב:כג",
-      "groupOrder": 10,
+      "groupOrder": 11,
       "orderWithinGroup": 1,
       "pasukText": "רַק חֲזַק לְבִלְתִּי אֲכֹל הַדָּם כִּי הַדָּם הוּא הַנָּפֶשׁ וְלֹא תֹאכַל הַנֶּפֶשׁ עִם הַבָּשָׂר",
       "rashiHe": "**רַק חֲזַק.** מִכָּאן שֶׁהָיוּ שְׁטוּפִים בְּדָם לְאָכְלוֹ, לְכָךְ הֻצְרְכוּ חִזּוּק. וּמָה אִם הַדָּם, שֶׁאֵין הַנֶּפֶשׁ קָצָה בּוֹ, הֻצְרַךְ חִזּוּק שֶׁלֹּא יֹאכְלֻהוּ — שְׁאָר מִצְוֹת עַל אַחַת כַּמָּה וְכַמָּה.",
@@ -4150,7 +4165,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "דְּבָרִים יב:כג",
       "groupKey": "דְּבָרִים יב:כג",
-      "groupOrder": 10,
+      "groupOrder": 11,
       "orderWithinGroup": 2,
       "pasukText": "רַק חֲזַק לְבִלְתִּי אֲכֹל הַדָּם כִּי הַדָּם הוּא הַנָּפֶשׁ וְלֹא תֹאכַל הַנֶּפֶשׁ עִם הַבָּשָׂר",
       "rashiHe": "**רַק חֲזַק.** מִכָּאן שֶׁהָיוּ שְׁטוּפִים בְּדָם לְאָכְלוֹ, לְכָךְ הֻצְרְכוּ חִזּוּק. וּמָה אִם הַדָּם, שֶׁאֵין הַנֶּפֶשׁ קָצָה בּוֹ, הֻצְרַךְ חִזּוּק שֶׁלֹּא יֹאכְלֻהוּ — שְׁאָר מִצְוֹת עַל אַחַת כַּמָּה וְכַמָּה.",
@@ -4174,7 +4189,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "בְּרֵאשִׁית יב:ז-ח",
       "groupKey": "בְּרֵאשִׁית יב:ז-ח",
-      "groupOrder": 11,
+      "groupOrder": 12,
       "orderWithinGroup": 1,
       "pasukText": "וַיֵּרָא ה' אֶל אַבְרָם וַיֹּאמֶר לְזַרְעֲךָ אֶתֵּן אֶת הָאָרֶץ הַזֹּאת וַיִּבֶן שָׁם מִזְבֵּחַ לַה' הַנִּרְאֶה אֵלָיו. וַיַּעְתֵּק מִשָּׁם הָהָרָה מִקֶּדֶם לְבֵית אֵל וַיֵּט אָהֱלֹה בֵּית אֵל מִיָּם וְהָעַי מִקֶּדֶם וַיִּבֶן שָׁם מִזְבֵּחַ לַה' וַיִּקְרָא בְּשֵׁם ה'",
       "rashiHe": "**אָהֱלֹה.** כָּתוּב ‘אָהֱלֹה’ בְּה\"א בְּסוֹפוֹ, וּבַתְּחִלָּה נָטָה אֶת אֹהֶל אִשְׁתּוֹ וְאַחַר כָּךְ אֶת שֶׁלּוֹ.",
@@ -4198,7 +4213,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "בְּרֵאשִׁית יב:ז-ח",
       "groupKey": "בְּרֵאשִׁית יב:ז-ח",
-      "groupOrder": 11,
+      "groupOrder": 12,
       "orderWithinGroup": 2,
       "pasukText": "וַיֵּרָא ה' אֶל אַבְרָם וַיֹּאמֶר לְזַרְעֲךָ אֶתֵּן אֶת הָאָרֶץ הַזֹּאת וַיִּבֶן שָׁם מִזְבֵּחַ לַה' הַנִּרְאֶה אֵלָיו. וַיַּעְתֵּק מִשָּׁם הָהָרָה מִקֶּדֶם לְבֵית אֵל וַיֵּט אָהֱלֹה בֵּית אֵל מִיָּם וְהָעַי מִקֶּדֶם וַיִּבֶן שָׁם מִזְבֵּחַ לַה' וַיִּקְרָא בְּשֵׁם ה'",
       "rashiHe": "**אָהֱלֹה.** כָּתוּב ‘אָהֱלֹה’ בְּה\"א בְּסוֹפוֹ, וּבַתְּחִלָּה נָטָה אֶת אֹהֶל אִשְׁתּוֹ וְאַחַר כָּךְ אֶת שֶׁלּוֹ.",
@@ -4222,7 +4237,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "דְּבָרִים כב:ד",
       "groupKey": "דְּבָרִים כב:ד",
-      "groupOrder": 12,
+      "groupOrder": 13,
       "orderWithinGroup": 1,
       "pasukText": "לֹא תִרְאֶה אֶת חֲמוֹר אָחִיךָ אוֹ שׁוֹרוֹ נֹפְלִים בַּדֶּרֶךְ וְהִתְעַלַּמְתָּ מֵהֶם הָקֵם תָּקִים עִמּוֹ",
       "rashiHe": "**עִמּוֹ.** עִם הַבְּעָלִים. אִם הָלַךְ וְיָשַׁב לוֹ וְאָמַר לוֹ: הוֹאִיל וְעָלֶיךָ מִצְוָה, אִם רָצִית לִטְעֹן, טְעֹן — פָּטוּר.",
@@ -4246,7 +4261,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "דְּבָרִים כב:ד",
       "groupKey": "דְּבָרִים כב:ד",
-      "groupOrder": 12,
+      "groupOrder": 13,
       "orderWithinGroup": 2,
       "pasukText": "לֹא תִרְאֶה אֶת חֲמוֹר אָחִיךָ אוֹ שׁוֹרוֹ נֹפְלִים בַּדֶּרֶךְ וְהִתְעַלַּמְתָּ מֵהֶם הָקֵם תָּקִים עִמּוֹ",
       "rashiHe": "**עִמּוֹ.** עִם הַבְּעָלִים. אִם הָלַךְ וְיָשַׁב לוֹ וְאָמַר לוֹ: הוֹאִיל וְעָלֶיךָ מִצְוָה, אִם רָצִית לִטְעֹן, טְעֹן — פָּטוּר.",
@@ -4270,7 +4285,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "שְׁמוֹת לד:ו",
       "groupKey": "שְׁמוֹת לד:ו",
-      "groupOrder": 13,
+      "groupOrder": 14,
       "orderWithinGroup": 1,
       "pasukText": "וַיַּעֲבֹר ה' עַל פָּנָיו וַיִּקְרָא ה' ה' אֵל רַחוּם וְחַנּוּן אֶרֶך אַפַּיִם וְרַב חֶסֶד וֶאֱמֶת",
       "rashiHe": "**אֶרֶך אַפַּיִם.** מַאֲרִיךְ אַפּוֹ וְאֵינוֹ מְמַהֵר לִפָּרַע, כִּי שֶׁמָּא יַעֲשֶׂה תְּשׁוּבָה.",
@@ -4294,7 +4309,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "שְׁמוֹת לד:ו",
       "groupKey": "שְׁמוֹת לד:ו",
-      "groupOrder": 13,
+      "groupOrder": 14,
       "orderWithinGroup": 2,
       "pasukText": "וַיַּעֲבֹר ה' עַל פָּנָיו וַיִּקְרָא ה' ה' אֵל רַחוּם וְחַנּוּן אֶרֶך אַפַּיִם וְרַב חֶסֶד וֶאֱמֶת",
       "rashiHe": "**אֶרֶך אַפַּיִם.** מַאֲרִיךְ אַפּוֹ וְאֵינוֹ מְמַהֵר לִפָּרַע, כִּי שֶׁמָּא יַעֲשֶׂה תְּשׁוּבָה.",
@@ -4318,7 +4333,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "שְׁמוֹת לד:ו",
       "groupKey": "שְׁמוֹת לד:ו",
-      "groupOrder": 13,
+      "groupOrder": 14,
       "orderWithinGroup": 3,
       "pasukText": "וַיַּעֲבֹר ה' עַל פָּנָיו וַיִּקְרָא ה' ה' אֵל רַחוּם וְחַנּוּן אֶרֶך אַפַּיִם וְרַב חֶסֶד וֶאֱמֶת",
       "rashiHe": "**אֶרֶך אַפַּיִם.** מַאֲרִיךְ אַפּוֹ וְאֵינוֹ מְמַהֵר לִפָּרַע, כִּי שֶׁמָּא יַעֲשֶׂה תְּשׁוּבָה.",
@@ -4342,7 +4357,7 @@ const SKILLS_BANK = [
       "fixed": true,
       "pasukRef": "בְּמִדְבָּר כ:כט",
       "groupKey": "בְּמִדְבָּר כ:כט",
-      "groupOrder": 14,
+      "groupOrder": 15,
       "orderWithinGroup": 1,
       "pasukText": "וַיִּרְאוּ כָּל הָעֵדָה כִּי גָוַע אַהֲרֹן וַיִּבְכּוּ אֶת אַהֲרֹן שְׁלֹשִׁים יוֹם כֹּל בֵּית יִשְׂרָאֵל",
       "rashiHe": "**כֹּל בֵּית יִשְׂרָאֵל.** הָאֲנָשִׁים וְהַנָּשִׁים, לְפִי שֶׁהָיָה אַהֲרֹן רוֹדֵף שָׁלוֹם וּמַטִּיל אַהֲבָה בֵּין בַּעֲלֵי מְרִיבָה וּבֵין אִישׁ לְאִשְׁתּוֹ.",
@@ -4522,7 +4537,7 @@ const SKILLS_BANK = [
       "id": 1039,
       "standard": 1,
       "rank": 1,
-      "question": "What is the שֹׁרֶשׁ (or שֵׁם עֶצֶם) of the following word? וְקִדַּשְׁתֶּם",
+      "question": "What is the שֹׁרֶשׁ (or שֵׁם עֶצֶם) of the following word?\nוְקִדַּשְׁתֶּם",
       "options": [
           "ד.ש.ת",
           "ש.ת.מ",
@@ -4634,7 +4649,7 @@ const SKILLS_BANK = [
       "id": 1047,
       "standard": 2,
       "rank": 1,
-      "question": "What is the שֹׁרֶשׁ (or שֵׁם עֶצֶם) of the following word? וַיִּפֹּל",
+      "question": "What is the שֹׁרֶשׁ (or שֵׁם עֶצֶם) of the following word?\nוַיִּפֹּל",
       "options": [
           "י.פ.ל",
           "פ.ל.ה",
@@ -5194,7 +5209,7 @@ const SKILLS_BANK = [
       "id": 1087,
       "standard": 7,
       "rank": 1,
-      "question": "What is the best translation of the word in quotation marks? וַיֹּאמֶר לָבָן הֵן לוּ יְהִי \"כִּדְבָרְךָ\"",
+      "question": "What is the best translation of the word in quotation marks?\nוַיֹּאמֶר לָבָן הֵן לוּ יְהִי \"כִּדְבָרְךָ\"",
       "options": [
           "to your words",
           "from your words",
@@ -5348,7 +5363,7 @@ const SKILLS_BANK = [
       "id": 1098,
       "standard": 9,
       "rank": 1,
-      "question": "What is the best translation of the following phrase? גַּמְלֵי הֶהָרִים",
+      "question": "What is the best translation of the following phrase?\nגַּמְלֵי הֶהָרִים",
       "options": [
           "The camels went to the mountains",
           "The camels of the mountains",
@@ -5656,7 +5671,7 @@ const SKILLS_BANK = [
       "id": 1120,
       "standard": 11,
       "rank": 1,
-      "question": "What is the best translation of the following word? פָּנֶיךָ",
+      "question": "What is the best translation of the following word?\nפָּנֶיךָ",
       "options": [
           "Their face",
           "Her face",
@@ -5670,7 +5685,7 @@ const SKILLS_BANK = [
       "id": 1121,
       "standard": 11,
       "rank": 1,
-      "question": "What is the best translation of the following word? חוֹמוֹתֵיהֶם",
+      "question": "What is the best translation of the following word?\nחוֹמוֹתֵיהֶם",
       "options": [
           "His wall",
           "His walls",
@@ -5838,7 +5853,7 @@ const SKILLS_BANK = [
       "id": 1133,
       "standard": 12,
       "rank": 1,
-      "question": "What is the best translation of the following phrase? וַתִּקְרָא אֶת אֵם הַיֶּלֶד",
+      "question": "What is the best translation of the following phrase?\nוַתִּקְרָא אֶת אֵם הַיֶּלֶד",
       "options": [
           "and she is calling the mother the child",
           "and she called the mother of the child",
@@ -5922,7 +5937,7 @@ const SKILLS_BANK = [
       "id": 1139,
       "standard": 13,
       "rank": 1,
-      "question": "What is the best translation of the word in quotation marks? וַיָּבֹא יִצְחָק \"הָאֹהֱלָה\"",
+      "question": "What is the best translation of the word in quotation marks?\nוַיָּבֹא יִצְחָק \"הָאֹהֱלָה\"",
       "options": [
           "to the tent",
           "from the tent",
@@ -6384,7 +6399,7 @@ const SKILLS_BANK = [
       "id": 1172,
       "standard": 17,
       "rank": 1,
-      "question": "Which is the best translation of the following word? יָמוּתוּ",
+      "question": "Which is the best translation of the following word?\nיָמוּתוּ",
       "options": [
           "he died",
           "they died",
@@ -6398,7 +6413,7 @@ const SKILLS_BANK = [
       "id": 1173,
       "standard": 17,
       "rank": 1,
-      "question": "Which is the best translation of the following word? נָמוּת",
+      "question": "Which is the best translation of the following word?\nנָמוּת",
       "options": [
           "he will die",
           "we will die",
@@ -6608,7 +6623,7 @@ const SKILLS_BANK = [
       "id": 1188,
       "standard": 19,
       "rank": 1,
-      "question": "Who or what does the word in quotation marks refer to? וַיִּקְחוּ בְנֵי אַהֲרֹן נָדָב וַאֲבִיהוּא אִישׁ מַחְתָּתוֹ וַיִּתְּנוּ \"בָהֵן\" אֵשׁ",
+      "question": "Who or what does the word in quotation marks refer to?\nוַיִּקְחוּ בְנֵי אַהֲרֹן נָדָב וַאֲבִיהוּא אִישׁ מַחְתָּתוֹ וַיִּתְּנוּ \"בָהֵן\" אֵשׁ",
       "options": [
           "נָדָב וַאֲבִיהוּא",
           "הָאֵש",
@@ -6958,7 +6973,7 @@ const SKILLS_BANK = [
       "id": 1213,
       "standard": 22,
       "rank": 1,
-      "question": "Which choice best describes what happened in this פָּסוּק? וְרַבִּים מֵהַכֹּהֲנִים וְהַלְוִיִּם וְרָאשֵׁי הָאָבוֹת הַזְּקֵנִים אֲשֶׁר רָאוּ אֶת הַבַּיִת הָרִאשׁוֹן בְּיִסְדוֹ זֶה הַבַּיִת בְּעֵינֵיהֶם בֹּכִים בְּקוֹל גָּדוֹל",
+      "question": "Which choice best describes what happened in this פָּסוּק?\nוְרַבִּים מֵהַכֹּהֲנִים וְהַלְוִיִּם וְרָאשֵׁי הָאָבוֹת הַזְּקֵנִים אֲשֶׁר רָאוּ אֶת הַבַּיִת הָרִאשׁוֹן בְּיִסְדוֹ זֶה הַבַּיִת בְּעֵינֵיהֶם בֹּכִים בְּקוֹל גָּדוֹל",
       "options": [
           "Many of the people who saw the first בֵּית הַמִּקְדָּש cried loudly when they saw this house (i.e. the second בֵּית הַמִּקְדָּש)",
           "Many of the people who saw this house (i.e. the second בֵּית הַמִּקְדָּש) sang in a loud voice with the people who saw the first בֵּית הַמִּקְדָּש",
@@ -7236,7 +7251,7 @@ const SKILLS_BANK = [
       "id": 1232,
       "standard": 27,
       "rank": 1,
-      "question": "What is the numerical value (גִּימַטְרִיָּה) of this word? צוֹעֲקִים",
+      "question": "What is the numerical value (גִּימַטְרִיָּה) of this word?\nצוֹעֲקִים",
       "options": [
           "306",
           "316",
@@ -7292,7 +7307,7 @@ const SKILLS_BANK = [
       "id": 1236,
       "standard": 30,
       "rank": 1,
-      "question": "The word \"חֲמִישִׁי\" on this page indicates that:",
+      "question": "**דְּבָרִים פֶּרֶק י\"ד**\n\n**כ.** כָּל עוֹף טָהוֹר תֹּאכֵלוּ׃\n**כא.** לֹא תֹאכְלוּ כָל נְבֵלָה לַגֵּר אֲשֶׁר בִּשְׁעָרֶיךָ תִּתְּנֶנָּה וַאֲכָלָהּ אוֹ מָכֹר לְנָכְרִי כִּי עַם קָדוֹשׁ אַתָּה לַה' אֱלֹקֶיךָ לֹא תְבַשֵּׁל גְּדִי בַּחֲלֵב אִמּוֹ׃\n**[חֲמִישִׁי]**\n**כב.** עַשֵּׂר תְּעַשֵּׂר אֵת כָּל תְּבוּאַת זַרְעֶךָ הַיֹּצֵא הַשָּׂדֶה שָׁנָה שָׁנָה׃\n**כג.** וְאָכַלְתָּ לִפְנֵי ה' אֱלֹקֶיךָ בַּמָּקוֹם אֲשֶׁר יִבְחַר לְשַׁכֵּן שְׁמוֹ שָׁם מַעְשַׂר דְּגָנְךָ תִּירֹשְׁךָ וְיִצְהָרֶךָ וּבְכֹרֹת בְּקָרְךָ וְצֹאנֶךָ לְמַעַן תִּלְמַד לְיִרְאָה אֶת ה' אֱלֹקֶיךָ כָּל הַיָּמִים׃\n\nThe word \"חֲמִישִׁי\" on this page indicates that:",
       "options": [
           "This section needs to be in the fifth column of the תּוֹרָה scroll (from where the sedra begins)",
           "The reader (בַּעַל קוֹרֵא) needs to read at least five פְּסוּקִים from this section",
