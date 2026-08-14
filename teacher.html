@@ -164,7 +164,7 @@
 <script>
 const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2DM6175X7uHjWM3ICSesbcUWJYWmxogqnbNJpKHp3oStb-1ch-VGu/exec";
 
-let dashboardData = null; // { vocab: [], knowledge: [], skills: [], navi: [], audio: [] }
+let dashboardData = null; // { vocab: [], vocabMastery: [], knowledge: [], skills: [], navi: [], audio: [] }
 
 // Bumped every time dashboardData is replaced (login or Refresh) so cached
 // AI trend summaries — which are keyed off this — get regenerated instead
@@ -184,6 +184,7 @@ const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rash
 const NAVI_SUBSECTIONS = ['Yehoshua', 'Shoftim', 'Shmuel I', 'Shmuel II', 'Megillat Esther', 'Megillat Rut', 'Sefer Yonah'];
 const AUDIO_DIMENSIONS = ['Accuracy', 'Fluency & Pace', 'Nekudot', 'Decoding', 'Pronunciation', 'Phrasing', 'Self-Correction', 'Overall'];
 const OVERALL_LABELS = { 4: 'Exceeds Expectations', 3: 'Meets Expectations', 2: 'Developing', 1: 'Beginning' };
+const VOCAB_MASTERY_GOAL = 300; // matches Code.gs.txt — total words/shorashim a student works toward
 
 // --- Parsing helpers -------------------------------------------------
 
@@ -280,7 +281,7 @@ function allStudentNames() {
         const trimmed = (name || '').toString().trim();
         if (trimmed) names.add(trimmed);
     });
-    ['vocab', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
+    ['vocab', 'vocabMastery', 'knowledge', 'skills', 'navi', 'audio'].forEach(key => {
         (dashboardData[key] || []).forEach(row => {
             const name = (row['Student Name'] || '').toString().trim();
             if (name) names.add(name);
@@ -537,6 +538,16 @@ function buildVocabDetailLine(row) {
     return line;
 }
 
+function buildVocabMasteryDetailLine(row) {
+    const line = document.createElement('div');
+    line.className = 'detail-line';
+    if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
+    const count = Number(row['Total Mastered']) || 0;
+    const pct = (count / VOCAB_MASTERY_GOAL) * 100;
+    line.appendChild(pctSpan(pct, `(${count} / ${VOCAB_MASTERY_GOAL} words)`));
+    return line;
+}
+
 // Shared by Chumash Knowledge and Navi Knowledge, which have the same
 // shape: an overall "Total Score" fraction, per-sefer fraction columns,
 // and an "Areas to Focus On" recommendation.
@@ -611,6 +622,7 @@ function buildStudentRow(name, latest) {
     const detail = document.createElement('div');
     detail.className = 'student-detail hidden';
     detail.appendChild(buildDetailRow('Vocabulary', buildVocabDetailLine(latest.vocab.get(name))));
+    detail.appendChild(buildDetailRow('Vocab Mastery', buildVocabMasteryDetailLine(latest.vocabMastery.get(name))));
     detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(latest.knowledge.get(name), 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On')));
     detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(latest.skills.get(name))));
     detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(latest.navi.get(name), 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On')));
@@ -637,6 +649,7 @@ function buildStudentScoresTable(scope) {
 
     const latest = {
         vocab: latestByStudent(dashboardData.vocab || []),
+        vocabMastery: latestByStudent(dashboardData.vocabMastery || []),
         knowledge: latestByStudent(dashboardData.knowledge || []),
         skills: latestByStudent(dashboardData.skills || []),
         navi: latestByStudent(dashboardData.navi || []),
@@ -772,6 +785,7 @@ function renderAverages() {
     const scope = getFilterScope();
     const allowedNames = scope.students;
     const vocabRows = filterRowsByStudents(dashboardData.vocab, allowedNames);
+    const vocabMasteryRows = [...latestByStudent(filterRowsByStudents(dashboardData.vocabMastery, allowedNames)).values()];
     const knowledgeRows = filterRowsByStudents(dashboardData.knowledge, allowedNames);
     const skillsRows = filterRowsByStudents(dashboardData.skills, allowedNames);
     const naviRows = filterRowsByStudents(dashboardData.navi, allowedNames);
@@ -794,6 +808,7 @@ function renderAverages() {
     ));
     panel.appendChild(buildAudioAverages(audioRows));
     panel.appendChild(buildVocabAverages(vocabRows));
+    panel.appendChild(buildVocabMasteryAverages(vocabMasteryRows));
 
     if (scope.type === 'class') {
         panel.appendChild(buildStudentScoresTable(scope));
@@ -1141,6 +1156,34 @@ function buildVocabAverages(rows) {
         wrap.appendChild(row);
     });
     return wrap;
+}
+
+// Vocab Mastery (the adaptive Check-In's persistent word-mastery tracker —
+// separate from "Vocabulary — overview" above, which reflects individual
+// session scores). `rows` is already one row per student (the latest state
+// row from the "Vocab Mastery" sheet), not an append-only log, so no
+// latestByStudent call is needed here. Per-student breakdown is sorted
+// fewest-mastered-first so students furthest behind the 300-word goal float
+// to the top once expanded.
+function buildVocabMasteryAverages(rows) {
+    rows = rows || [];
+    const counts = rows.map(r => Number(r['Total Mastered'])).filter(n => !isNaN(n));
+    const overallAvg = average(counts);
+    const overallPct = overallAvg === null ? null : (overallAvg / VOCAB_MASTERY_GOAL) * 100;
+    const overallDisplay = overallAvg === null ? '—' : Math.round(overallAvg) + ' / ' + VOCAB_MASTERY_GOAL;
+
+    return buildCollapsibleAverages(
+        `Vocabulary Mastery — progress toward ${VOCAB_MASTERY_GOAL} words`, overallPct, overallDisplay, rows,
+        (nested) => {
+            const perStudent = rows.map(r => ({
+                name: (r['Student Name'] || '').toString().trim(),
+                count: Number(r['Total Mastered']) || 0
+            })).sort((a, b) => a.count - b.count);
+            perStudent.forEach(s => {
+                nested.appendChild(buildBarRow(s.name, (s.count / VOCAB_MASTERY_GOAL) * 100, `${s.count} / ${VOCAB_MASTERY_GOAL}`));
+            });
+        }
+    );
 }
 </script>
 </body>

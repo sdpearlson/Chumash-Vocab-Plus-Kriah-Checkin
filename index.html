@@ -108,12 +108,9 @@
         <button class="intake-choice" onclick="startAudio()">Reading Fluency Submission</button>
         <button class="intake-choice" onclick="startReviewSheet()">Generate Review Sheet</button>
     </div>
-    <div id="selfEvalArea" class="hidden">
-        <p>Choose your vocab comfort level:</p>
-        <button class="intake-choice" onclick="setVocabLevel('Just Starting', 1)">Just Starting</button>
-        <button class="intake-choice" onclick="setVocabLevel('Beginner', 1)">Beginner</button>
-        <button class="intake-choice" onclick="setVocabLevel('Intermediate', 2)">Intermediate</button>
-        <button class="intake-choice" onclick="setVocabLevel('Advanced', 3)">Advanced</button>
+    <div id="vocabIntroArea" class="hidden">
+        <p id="vocabIntroText">Loading your progress&hellip;</p>
+        <button class="intake-choice hidden" id="vocabBeginBtn" onclick="beginVocab()">Begin</button>
         <button class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="knowledgeIntroArea" class="hidden">
@@ -157,7 +154,12 @@
 const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2DM6175X7uHjWM3ICSesbcUWJYWmxogqnbNJpKHp3oStb-1ch-VGu/exec";
 
 const state = {
-    name: "", selfEval: null, history: [], currentRank: 1, questionCount: 0,
+    name: "",
+    // Vocabulary Check-In: history/questionCount track the current session;
+    // vocabLearningPool/vocabMastered are the persistent adaptive queue,
+    // loaded from the backend at the start of a session and saved back at
+    // the end (see startVocab/finishVocab).
+    history: [], questionCount: 0, vocabLearningPool: [], vocabMastered: [],
     knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: [],
     skillsQueue: [], skillsIndex: 0, skillsHistory: [],
     naviQueue: [], naviIndex: 0, naviHistory: []
@@ -196,12 +198,15 @@ function goToHub() {
         activeStream.getTracks().forEach(track => track.stop());
         activeStream = null;
     }
-    hide('selfEvalArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('naviIntroArea'); hide('quizArea'); hide('quizProgress');
+    hide('vocabIntroArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('naviIntroArea'); hide('quizArea'); hide('quizProgress');
     hide('audioArea'); hide('resultsArea'); hide('reviewSheetArea');
     document.querySelector('.intake-container').classList.remove('wide');
 
     // Reset per-attempt state so a fresh vocab/knowledge/skills run or recording starts clean.
-    state.selfEval = null; state.history = []; state.currentRank = 1; state.questionCount = 0;
+    // (vocabLearningPool/vocabMastered are NOT reset here — those persist
+    // across sessions and are reloaded fresh from the backend every time
+    // startVocab() runs.)
+    state.history = []; state.questionCount = 0;
     state.knowledgeQueue = []; state.knowledgeIndex = 0; state.knowledgeHistory = [];
     state.skillsQueue = []; state.skillsIndex = 0; state.skillsHistory = [];
     state.naviQueue = []; state.naviIndex = 0; state.naviHistory = [];
@@ -563,8 +568,23 @@ function buildReviewQuestion(item) {
 // Official Chumash Vocabulary list (340 words: the original 281 plus 59 added
 // from 7 years of JSAT practice tests, teacher-reviewed), reviewed and
 // re-tiered by the teacher.
-const TOTAL_QUESTIONS = 15;
-const BLOCK_SIZE = 5; // questions per difficulty block
+//
+// Vocab Check-In (adaptive mastery queue): every student works through this
+// same list in the same order (easiest words first, via `rank`), no more
+// self-reported starting level. A student always has a "learning pool" of
+// VOCAB_LEARNING_POOL_SIZE words. Answering a learning word correctly
+// VOCAB_MASTERY_THRESHOLD times moves it to their permanent "mastered" list
+// and pulls the next new word in from the curriculum to refill the pool.
+// Every VOCAB_REVIEW_INTERVAL-th question in a session is instead a random
+// already-mastered word shown for review; getting a review word wrong sends
+// it back into the learning pool (reset to 0 correct answers) rather than
+// leaving it mastered. VOCAB_MASTERY_GOAL is just the total words/shorashim
+// a student is working toward overall, shown as a progress count.
+const VOCAB_SESSION_QUESTIONS = 15; // questions per Vocab Check-In session
+const VOCAB_LEARNING_POOL_SIZE = 10;
+const VOCAB_MASTERY_THRESHOLD = 3;
+const VOCAB_REVIEW_INTERVAL = 3;
+const VOCAB_MASTERY_GOAL = 300;
 const QUESTION_BANK = [
   { ri: 1, rank: 1, display: "אָב", meaning: 'father', options: ['work', 'mountain', 'eye', 'father'] },
   { ri: 2, rank: 1, display: "אֶבֶן", meaning: 'stone', options: ['ox', 'fire', 'stone', 'leader / prince'] },
@@ -908,10 +928,70 @@ const QUESTION_BANK = [
   {"ri": 1058, "rank": 1, "display": "גֵּר", "meaning": "stranger / convert", "options": ["live", "before", "stranger / convert", "sleep"]},
 ];
 
-function startVocab() { hide('hubMenuArea'); show('selfEvalArea'); }
-function setVocabLevel(evalName, rank) {
-    state.selfEval = evalName; state.currentRank = rank;
-    hide('selfEvalArea'); show('quizArea'); show('quizProgress'); runNext();
+// The canonical difficulty-ordered curriculum every student progresses
+// through: sorted by `rank` (1 = easiest) with `ri` as a stable tiebreaker.
+// The bank happens to already be entered in roughly this order, but sorting
+// explicitly guarantees it regardless of how the bank is edited later.
+const VOCAB_CURRICULUM_ORDER = QUESTION_BANK.slice().sort((a, b) => a.rank - b.rank || a.ri - b.ri);
+
+// Tops `pool` up to VOCAB_LEARNING_POOL_SIZE by pulling the next words (in
+// curriculum order) that aren't already in the pool or already mastered.
+// Mutates and returns `pool`. If the student has worked through the entire
+// bank, this simply stops early rather than erroring.
+function fillVocabLearningPool(pool, masteredRis) {
+    const used = new Set([...pool.map(p => p.ri), ...masteredRis]);
+    for (const word of VOCAB_CURRICULUM_ORDER) {
+        if (pool.length >= VOCAB_LEARNING_POOL_SIZE) break;
+        if (used.has(word.ri)) continue;
+        pool.push({ ri: word.ri, correctCount: 0 });
+        used.add(word.ri);
+    }
+    return pool;
+}
+
+// Starts the Vocab Check-In: loads the student's saved learning pool +
+// mastered list from the backend (or builds a fresh pool starting at the
+// beginning of the curriculum for a brand-new student), shows their
+// mastery progress, then waits for "Begin".
+function startVocab() {
+    hide('hubMenuArea');
+    show('vocabIntroArea');
+    const introText = document.getElementById('vocabIntroText');
+    hide('vocabBeginBtn');
+    introText.textContent = 'Loading your progress…';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'getVocabState', payload: { name: state.name } }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        let pool = [];
+        let mastered = [];
+        if (data && data.success && data.found && data.vocabState) {
+            pool = Array.isArray(data.vocabState.learningPool) ? data.vocabState.learningPool.slice() : [];
+            mastered = Array.isArray(data.vocabState.mastered) ? data.vocabState.mastered.slice() : [];
+        }
+        fillVocabLearningPool(pool, mastered);
+        state.vocabLearningPool = pool;
+        state.vocabMastered = mastered;
+        introText.textContent = `You've mastered ${mastered.length} of ${VOCAB_MASTERY_GOAL} words so far. Let's keep going!`;
+        show('vocabBeginBtn');
+    })
+    .catch(() => {
+        // Backend unreachable — don't block the student, just start fresh
+        // from the beginning of the curriculum for this session.
+        state.vocabLearningPool = fillVocabLearningPool([], []);
+        state.vocabMastered = [];
+        introText.textContent = "Couldn't load your saved progress — starting from the beginning.";
+        show('vocabBeginBtn');
+    });
+}
+
+function beginVocab() {
+    hide('vocabIntroArea'); show('quizArea'); show('quizProgress');
+    runNext();
 }
 
 // A line counts as Hebrew-dominant if most of its letters (ignoring numbers,
@@ -1073,37 +1153,53 @@ function renderFixedRashiQuestion(q, onPick) {
     appendSkipButton(quizArea, onPick);
 }
 
+// Picks the next vocab question. Every VOCAB_REVIEW_INTERVAL-th question in
+// the session (3rd, 6th, 9th...) is a review pulled from the student's
+// already-mastered words, as long as they have any; every other question
+// comes from their current learning pool.
 function runNext() {
     state.questionCount++;
-    if (state.questionCount > TOTAL_QUESTIONS) return finishVocab();
-    document.getElementById('progressBar').style.width = ((state.questionCount-1)/TOTAL_QUESTIONS*100)+'%';
-    let potential = QUESTION_BANK.filter(q => q.rank === state.currentRank && !state.history.find(h => h.ri === q.ri));
-    if (potential.length === 0) potential = QUESTION_BANK.filter(q => !state.history.find(h => h.ri === q.ri));
-    const q = potential[Math.floor(Math.random()*potential.length)];
-    renderChoiceQuestion(q.display, q.options, (picked) => window.ans(picked, q), { hebrew: true });
+    if (state.questionCount > VOCAB_SESSION_QUESTIONS) return finishVocab();
+    document.getElementById('progressBar').style.width = ((state.questionCount-1)/VOCAB_SESSION_QUESTIONS*100)+'%';
+
+    const isReview = (state.questionCount % VOCAB_REVIEW_INTERVAL === 0) && state.vocabMastered.length > 0;
+    let ri;
+    if (isReview) {
+        ri = state.vocabMastered[Math.floor(Math.random() * state.vocabMastered.length)];
+    } else if (state.vocabLearningPool.length > 0) {
+        ri = state.vocabLearningPool[Math.floor(Math.random() * state.vocabLearningPool.length)].ri;
+    } else {
+        // Learning pool is empty (whole bank mastered) — fall back to a
+        // review word so the session can still continue.
+        ri = state.vocabMastered[Math.floor(Math.random() * state.vocabMastered.length)];
+    }
+    const q = QUESTION_BANK.find(w => w.ri === ri);
+    renderChoiceQuestion(q.display, q.options, (picked) => window.ans(picked, q, isReview), { hebrew: true });
 }
 
-window.ans = (picked, q) => {
+window.ans = (picked, q, isReview) => {
     const isCorrect = (picked === q.meaning);
     state.history.push({ ri: q.ri, word: q.display, correct: isCorrect, picked: picked ? picked : "Skipped" });
 
-    // Adaptive difficulty:
-    // - Any wrong/skipped answer immediately eases off one level (floor: rank 1),
-    //   so a student who starts struggling gets easier words right away.
-    // - Whole blocks of BLOCK_SIZE questions are used to decide whether to step
-    //   UP a level: only after finishing a block mostly/fully correct at the
-    //   current level do the next BLOCK_SIZE questions move up a rank.
-    if (!isCorrect && state.currentRank > 1) {
-        state.currentRank--;
-    }
-    if (state.questionCount % BLOCK_SIZE === 0) {
-        const block = state.history.slice(-BLOCK_SIZE);
-        const blockCorrect = block.filter(h => h.correct).length;
-        if (blockCorrect >= BLOCK_SIZE - 1 && state.currentRank < 3) {
-            state.currentRank++; // aced the block -> harder words next block
-        } else if (blockCorrect <= 2 && state.currentRank > 1) {
-            state.currentRank--; // struggled with the block -> easier words next block
+    if (isReview) {
+        if (!isCorrect) {
+            // Missed a review word — demote it back into the learning pool
+            // (reset to 0 correct answers) rather than leaving it mastered.
+            state.vocabMastered = state.vocabMastered.filter(ri => ri !== q.ri);
+            state.vocabLearningPool.push({ ri: q.ri, correctCount: 0 });
         }
+    } else {
+        const entry = state.vocabLearningPool.find(p => p.ri === q.ri);
+        if (entry && isCorrect) {
+            entry.correctCount++;
+            if (entry.correctCount >= VOCAB_MASTERY_THRESHOLD) {
+                state.vocabLearningPool = state.vocabLearningPool.filter(p => p.ri !== q.ri);
+                state.vocabMastered.push(q.ri);
+                fillVocabLearningPool(state.vocabLearningPool, state.vocabMastered);
+            }
+        }
+        // A wrong/skipped answer on a learning word leaves its correctCount
+        // unchanged — "correct 3 times" is a cumulative count, not 3 in a row.
     }
     runNext();
 };
@@ -1113,23 +1209,40 @@ function finishVocab() {
     document.getElementById('resultsDesc').innerHTML = `Checking answers...`; show('resultsArea');
     const score = state.history.filter(h => h.correct).length;
 
-    // FETCH TO EXTERNAL APPS SCRIPT URL
+    // Derive a rough "Assigned Group" for the existing Vocab Results log
+    // sheet/teacher-dashboard view (A/Alpha/Aleph, unchanged shape) from the
+    // hardest rank currently in the student's learning pool.
+    const finalRank = state.vocabLearningPool.length > 0
+        ? Math.max(...state.vocabLearningPool.map(p => (QUESTION_BANK.find(w => w.ri === p.ri) || { rank: 1 }).rank))
+        : 3;
+
     isUploading = true;
-    fetch(GAS_WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "saveVocab",
-            payload: { name: state.name, selfEval: state.selfEval, finalRank: state.currentRank, score: score, total: TOTAL_QUESTIONS, history: state.history }
+    Promise.all([
+        fetch(GAS_WEB_APP_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "saveVocab",
+                payload: { name: state.name, selfEval: "Adaptive", finalRank: finalRank, score: score, total: VOCAB_SESSION_QUESTIONS, history: state.history }
+            }),
+            headers: { "Content-Type": "text/plain;charset=utf-8" }
         }),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-    })
-    .then(res => res.json())
-    .then(data => {
+        fetch(GAS_WEB_APP_URL, {
+            method: "POST",
+            body: JSON.stringify({
+                action: "saveVocabState",
+                payload: { name: state.name, vocabState: { learningPool: state.vocabLearningPool, mastered: state.vocabMastered } }
+            }),
+            headers: { "Content-Type": "text/plain;charset=utf-8" }
+        })
+    ])
+    .then(responses => Promise.all(responses.map(r => r.json())))
+    .then(([saveData, stateData]) => {
         isUploading = false;
-        if (data.success) {
-            document.getElementById('resultsDesc').innerHTML = `Vocab Check-In logged successfully!`;
+        const masteredCount = state.vocabMastered.length;
+        if (saveData.success && stateData.success) {
+            document.getElementById('resultsDesc').innerHTML = `Vocab Check-In logged successfully! You've mastered ${masteredCount} of ${VOCAB_MASTERY_GOAL} words.`;
         } else {
-            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
+            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${(saveData && saveData.error) || (stateData && stateData.error) || 'Unknown error'}`;
         }
     })
     .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; });
