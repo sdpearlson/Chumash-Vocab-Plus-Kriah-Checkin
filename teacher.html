@@ -193,8 +193,19 @@ let trendsRenderToken = 0;
 const KNOWLEDGE_SUBSECTIONS = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
 const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills (Gematria, Genuvah Patach, Aliyot)'];
 const NAVI_SUBSECTIONS = ['Yehoshua', 'Shoftim', 'Shmuel I', 'Shmuel II', 'Megillat Esther', 'Megillat Rut', 'Sefer Yonah'];
-const AUDIO_DIMENSIONS = ['Accuracy', 'Fluency & Pace', 'Nekudot', 'Decoding', 'Pronunciation', 'Phrasing', 'Self-Correction', 'Overall'];
-const OVERALL_LABELS = { 4: 'Exceeds Expectations', 3: 'Meets Expectations', 2: 'Developing', 1: 'Beginning' };
+// Rubric v2 (out of 10, 5 dimensions) — see AUDIO_ANALYSIS_HEADERS in
+// Code.gs.txt for why Accuracy/Decoding/Pronunciation were merged into one
+// "Accuracy & Decoding" score and Fluency & Pace/Phrasing & Expression were
+// merged into "Fluency & Phrasing". Rows from before this change live in a
+// separate "Audio Analysis (Old Rubric, out of 4)" sheet and don't feed
+// this dashboard, since a 1-4 score isn't comparable to a 1-10 one.
+const AUDIO_DIMENSIONS = ['Accuracy & Decoding', 'Nekudot', 'Fluency & Phrasing', 'Self-Correction', 'Overall'];
+const OVERALL_LABELS = {
+    10: 'Exceeds Expectations', 9: 'Exceeds Expectations',
+    8: 'Meets Expectations', 7: 'Meets Expectations',
+    6: 'Developing', 5: 'Developing', 4: 'Developing',
+    3: 'Beginning', 2: 'Beginning', 1: 'Beginning'
+};
 const VOCAB_MASTERY_GOAL = 300; // matches Code.gs.txt — total words/shorashim a student works toward
 
 // --- Parsing helpers -------------------------------------------------
@@ -620,7 +631,7 @@ function buildAudioDetailLine(row) {
     }
 
     const overall = Number(row['Overall']);
-    const pct = isNaN(overall) ? null : (overall / 4) * 100;
+    const pct = isNaN(overall) ? null : (overall / 10) * 100;
     const span = document.createElement('span');
     span.className = 'cell-pct ' + pctClass(pct);
     span.textContent = OVERALL_LABELS[overall] || ('Overall: ' + row['Overall']);
@@ -759,7 +770,7 @@ const HISTORY_METRIC_DEFS = [
         key: 'audio', label: 'Reading Fluency',
         get: r => {
             const n = Number(r['Overall']);
-            const pct = isNaN(n) ? null : (n / 4) * 100;
+            const pct = isNaN(n) ? null : (n / 10) * 100;
             const display = (OVERALL_LABELS[n] || ('Overall: ' + r['Overall'])) + (r['WPM'] ? ` (${r['WPM']} WPM)` : '');
             return { pct, display };
         }
@@ -1263,17 +1274,17 @@ function buildAudioAverages(rows) {
     rows = rows || [];
     const overallVals = rows.map(r => Number(r['Overall'])).filter(n => !isNaN(n));
     const overallAvg = average(overallVals);
-    const overallPct = overallAvg === null ? null : (overallAvg / 4) * 100;
-    const overallDisplay = overallAvg === null ? '—' : overallAvg.toFixed(1) + ' / 4';
+    const overallPct = overallAvg === null ? null : (overallAvg / 10) * 100;
+    const overallDisplay = overallAvg === null ? '—' : overallAvg.toFixed(1) + ' / 10';
 
     return buildCollapsibleAverages(
-        'Reading Fluency — average rubric scores (out of 4)', overallPct, overallDisplay, rows,
+        'Reading Fluency — average rubric scores (out of 10)', overallPct, overallDisplay, rows,
         (nested) => {
             AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => {
                 const vals = rows.map(r => Number(r[dim])).filter(n => !isNaN(n));
                 const avg = average(vals);
-                const pct = avg === null ? null : (avg / 4) * 100;
-                nested.appendChild(buildBarRow(dim, pct, avg === null ? '—' : avg.toFixed(1) + ' / 4'));
+                const pct = avg === null ? null : (avg / 10) * 100;
+                nested.appendChild(buildBarRow(dim, pct, avg === null ? '—' : avg.toFixed(1) + ' / 10'));
             });
 
             const wpmVals = rows.map(r => Number(r['WPM'])).filter(n => !isNaN(n));
