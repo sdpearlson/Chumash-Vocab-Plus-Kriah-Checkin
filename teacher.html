@@ -108,6 +108,15 @@
   .detail-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
   .detail-chip { color: #6b6055; }
   .detail-chip.muted { color: #a6998a; }
+  .comparison-wrap { overflow-x: auto; margin-bottom: 26px; border: 1px solid #ece5d8; border-radius: 6px; }
+  .comparison-table { width: auto; min-width: 100%; }
+  .comparison-table th, .comparison-table td { white-space: nowrap; }
+  .comparison-table th:first-child, .comparison-table td:first-child {
+    position: sticky; left: 0; background: #fbf6ec; z-index: 1; white-space: nowrap;
+  }
+  .comparison-table td:first-child { background: #fff; font-weight: 600; }
+  .comparison-table .cell-empty { color: #c2b8a8; }
+  .comparison-table .cell-pct + .cell-pct { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -142,6 +151,7 @@
       <div class="history-controls">
         <select id="historyStudentSelect" class="text-input"></select>
       </div>
+      <div id="historyMatrixArea"></div>
       <div style="overflow-x:auto;">
         <table id="historyTable">
           <thead>
@@ -688,8 +698,133 @@ function renderHistoryControls() {
     select.onchange = renderHistory;
 }
 
+// Builds the "metrics as rows, dates as columns" comparison grid for one
+// specific student — lets a teacher scan across a row to see one metric's
+// trend over time, or down a column to see everything that happened on a
+// given day. Attempts are bucketed by calendar day (not exact timestamp)
+// so a Vocab Check-In and a Knowledge Check-In done the same day land in
+// the same column. Only rendered when a single student (not "All
+// students") is selected — a matrix doesn't make sense across many
+// students in one screen, so that case keeps the flat table below instead.
+const HISTORY_METRIC_DEFS = [
+    {
+        key: 'vocab', label: 'Vocabulary',
+        get: r => ({ pct: (parseFraction(r['Score']) || {}).pct ?? null, display: r['Score'] || '—' })
+    },
+    {
+        key: 'knowledge', label: 'Chumash Knowledge',
+        get: r => ({ pct: (parseFraction(r['Total Score']) || {}).pct ?? null, display: r['Total Score'] || '—' })
+    },
+    {
+        key: 'skills', label: 'Chumash Skills',
+        get: r => ({ pct: parsePercent(r['Percentage']), display: r['Percentage'] || r['Total Score'] || '—' })
+    },
+    {
+        key: 'navi', label: 'Navi Knowledge',
+        get: r => ({ pct: (parseFraction(r['Total Score']) || {}).pct ?? null, display: r['Total Score'] || '—' })
+    },
+    {
+        key: 'audio', label: 'Reading Fluency',
+        get: r => {
+            const n = Number(r['Overall']);
+            const pct = isNaN(n) ? null : (n / 4) * 100;
+            const display = (OVERALL_LABELS[n] || ('Overall: ' + r['Overall'])) + (r['WPM'] ? ` (${r['WPM']} WPM)` : '');
+            return { pct, display };
+        }
+    }
+];
+
+function dayKey(v) {
+    const d = toDate(v);
+    return d ? d.toDateString() : null;
+}
+
+function buildStudentComparisonMatrix(name) {
+    const wrap = document.createElement('div');
+
+    const metricsData = HISTORY_METRIC_DEFS.map(def => {
+        const studentRows = (dashboardData[def.key] || []).filter(r => (r['Student Name'] || '').toString().trim() === name);
+        const byDay = new Map();
+        studentRows.forEach(r => {
+            const key = dayKey(r['Timestamp']);
+            if (!key) return;
+            if (!byDay.has(key)) byDay.set(key, []);
+            byDay.get(key).push(r);
+        });
+        return { label: def.label, get: def.get, byDay, hasData: studentRows.length > 0 };
+    }).filter(m => m.hasData);
+
+    if (!metricsData.length) return wrap; // nothing to compare yet — flat table below will show the empty state
+
+    const allDays = [...new Set(metricsData.flatMap(m => [...m.byDay.keys()]))]
+        .sort((a, b) => new Date(a) - new Date(b));
+
+    const heading = document.createElement('div');
+    heading.className = 'section-heading';
+    heading.textContent = `${name} — comparison over time`;
+    wrap.appendChild(heading);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'comparison-wrap';
+    const table = document.createElement('table');
+    table.className = 'comparison-table';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const cornerTh = document.createElement('th');
+    cornerTh.textContent = 'Metric';
+    headRow.appendChild(cornerTh);
+    allDays.forEach(day => {
+        const th = document.createElement('th');
+        th.textContent = new Date(day).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    metricsData.forEach(m => {
+        const tr = document.createElement('tr');
+        const labelTd = document.createElement('td');
+        labelTd.textContent = m.label;
+        tr.appendChild(labelTd);
+
+        allDays.forEach(day => {
+            const td = document.createElement('td');
+            const attemptsThatDay = m.byDay.get(day);
+            if (attemptsThatDay && attemptsThatDay.length) {
+                attemptsThatDay.forEach((r, i) => {
+                    const { pct, display } = m.get(r);
+                    const span = document.createElement('span');
+                    span.className = 'cell-pct ' + pctClass(pct);
+                    span.textContent = display;
+                    td.appendChild(span);
+                    if (i < attemptsThatDay.length - 1) td.appendChild(document.createElement('br'));
+                });
+            } else {
+                td.textContent = '—';
+                td.className = 'cell-empty';
+            }
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    wrap.appendChild(tableWrap);
+    return wrap;
+}
+
+function renderHistoryMatrix(filterName) {
+    const area = el('historyMatrixArea');
+    area.innerHTML = '';
+    if (!filterName) return; // "All students" — matrix doesn't apply, flat table below covers it
+    area.appendChild(buildStudentComparisonMatrix(filterName));
+}
+
 function renderHistory() {
     const filterName = el('historyStudentSelect').value;
+    renderHistoryMatrix(filterName);
     const allowedNames = new Set(getFilteredStudentNames());
     const attempts = [];
 
