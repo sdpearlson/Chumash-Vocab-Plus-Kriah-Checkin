@@ -107,6 +107,7 @@
   .detail-label { width: 150px; flex-shrink: 0; font-weight: 600; font-size: 0.85rem; color: #6b6055; }
   .detail-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
   .detail-chip { color: #6b6055; }
+  a.detail-chip.audio-link { color: #2f6fa3; text-decoration: underline; cursor: pointer; }
   .detail-chip.muted { color: #a6998a; }
   .comparison-wrap { overflow-x: auto; margin-bottom: 26px; border: 1px solid #ece5d8; border-radius: 6px; }
   .comparison-table { width: auto; min-width: 100%; }
@@ -585,10 +586,39 @@ function buildSkillsDetailLine(row) {
     return line;
 }
 
+// Recordings are archived to Drive independent of grading (see
+// processAudioSubmission in Code.gs.txt), so a submission that failed AI
+// grading still shows up here — as a "needs manual review" row with a link
+// to the original recording — rather than just vanishing.
+function buildAudioLink(row) {
+    const url = row['Audio File'];
+    if (!url || url === '(not saved)') return null;
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = '🔊 Listen to recording';
+    a.className = 'detail-chip audio-link';
+    return a;
+}
+
 function buildAudioDetailLine(row) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No submission yet', true)); return line; }
+
+    const needsReview = (row['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+    if (needsReview) {
+        const span = document.createElement('span');
+        span.className = 'cell-pct pct-none';
+        span.textContent = 'Needs manual review';
+        line.appendChild(span);
+        line.appendChild(detailChip(row['Reading Summary'], true));
+        const link = buildAudioLink(row);
+        if (link) line.appendChild(link);
+        return line;
+    }
+
     const overall = Number(row['Overall']);
     const pct = isNaN(overall) ? null : (overall / 4) * 100;
     const span = document.createElement('span');
@@ -599,6 +629,8 @@ function buildAudioDetailLine(row) {
     AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => { if (row[dim]) line.appendChild(detailChip(dim + ': ' + row[dim], true)); });
     if (row['Reading Summary']) line.appendChild(detailChip(row['Reading Summary'], true));
     if (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None') line.appendChild(detailChip('Mistakes: ' + row['Specific Mistakes'], true));
+    const link = buildAudioLink(row);
+    if (link) line.appendChild(link);
     return line;
 }
 
