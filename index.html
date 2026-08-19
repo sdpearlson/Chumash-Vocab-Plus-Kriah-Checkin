@@ -1174,8 +1174,17 @@ function renderRichText(container, text) {
     lines.forEach((line) => {
         const lineDiv = document.createElement('div');
         lineDiv.className = 'rich-line';
-        lineDiv.dir = 'auto';
-        if (isHebrewDominant(line)) lineDiv.style.textAlign = 'right';
+        // Explicit dir based on which script dominates the line, not dir="auto"'s
+        // first-strong-character heuristic — a line that's mostly English but
+        // happens to start with a Hebrew word/acronym (e.g. a question stem
+        // opening with רש"י) would otherwise get flipped to RTL as a whole,
+        // scrambling the English word order and punctuation placement.
+        if (isHebrewDominant(line)) {
+            lineDiv.dir = 'rtl';
+            lineDiv.style.textAlign = 'right';
+        } else {
+            lineDiv.dir = 'ltr';
+        }
         const parts = line.split(/(\*\*[^*]+\*\*)/g);
         parts.forEach(part => {
             if (part.startsWith('**') && part.endsWith('**')) {
@@ -1268,15 +1277,19 @@ function renderFixedRashiQuestion(q, onPick) {
 
     const pasukLine = document.createElement('div');
     pasukLine.className = 'rich-line pasuk-passage';
-    pasukLine.dir = 'auto';
     const pasukDisplay = `(${q.pasukRef}) ${q.pasukText}`;
-    if (isHebrewDominant(pasukDisplay)) pasukLine.style.textAlign = 'right';
+    if (isHebrewDominant(pasukDisplay)) {
+        pasukLine.dir = 'rtl';
+        pasukLine.style.textAlign = 'right';
+    } else {
+        pasukLine.dir = 'ltr';
+    }
     pasukLine.textContent = pasukDisplay;
     wrap.appendChild(pasukLine);
 
     const pasukTranslationLine = document.createElement('div');
     pasukTranslationLine.className = 'rich-line rashi-translation';
-    pasukTranslationLine.dir = 'auto';
+    pasukTranslationLine.dir = isHebrewDominant(q.pasukEn) ? 'rtl' : 'ltr';
     pasukTranslationLine.textContent = q.pasukEn;
     wrap.appendChild(pasukTranslationLine);
 
@@ -1292,13 +1305,18 @@ function renderFixedRashiQuestion(q, onPick) {
 
     const translationLine = document.createElement('div');
     translationLine.className = 'rich-line rashi-translation';
-    translationLine.dir = 'auto';
+    translationLine.dir = isHebrewDominant(q.rashiEn) ? 'rtl' : 'ltr';
     translationLine.textContent = q.rashiEn;
     wrap.appendChild(translationLine);
 
     const stemLine = document.createElement('div');
     stemLine.className = 'rich-line';
-    stemLine.dir = 'auto';
+    // Explicit direction by dominant script, not dir="auto" — a stem that's
+    // mostly English but opens with a Hebrew word/acronym (e.g. 'רש"י says...')
+    // would otherwise get flipped RTL as a whole by the browser's
+    // first-strong-character rule, scrambling the English word order.
+    stemLine.dir = isHebrewDominant(q.questionStem) ? 'rtl' : 'ltr';
+    if (isHebrewDominant(q.questionStem)) stemLine.style.textAlign = 'right';
     stemLine.style.marginTop = '0.9em';
     stemLine.textContent = q.questionStem;
     wrap.appendChild(stemLine);
