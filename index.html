@@ -7832,8 +7832,10 @@ function sendAudioToServer() {
                 show('resultsArea');
             } else {
                 // Previously this branch never ran, so failures looked identical
-                // to successes. Now the real server-side error is shown.
-                document.getElementById('audioStatus').innerText = `Error: ${data.error || 'Unknown error'}. Please try recording again.`;
+                // to successes. Now the real server-side error is shown — the
+                // server already returns a clean, student-friendly message (never
+                // raw API/exception text), so it's shown as-is with no extra wrapper.
+                document.getElementById('audioStatus').innerText = data.error || 'Something went wrong. Please try recording again.';
                 document.getElementById('recordBtn').disabled = false;
                 document.getElementById('recordBtn').innerText = "🎤 Start Recording";
                 document.getElementById('audioBackBtn').style.display = '';
