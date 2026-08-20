@@ -7808,6 +7808,15 @@ function sendAudioToServer() {
         return;
     }
 
+    // Move to the shared results screen right away and use the same
+    // submitting-state button (animated bar + disabled "Submitting..." text)
+    // as every other Check-In, instead of leaving the student staring at the
+    // recording screen for the whole upload + AI grading wait.
+    hide('audioArea');
+    document.getElementById('resultsDesc').innerHTML = `Submitting your audio recording...`;
+    show('resultsArea');
+    showSubmittingState();
+
     const reader = new FileReader();
     reader.readAsDataURL(audioBlob);
     reader.onloadend = function() {
@@ -7827,26 +7836,24 @@ function sendAudioToServer() {
         .then(data => {
             isUploading = false;
             if (data.success) {
-                hide('audioArea');
                 document.getElementById('resultsDesc').innerHTML = `Audio processed! Your teacher has the results.`;
-                show('resultsArea');
             } else {
-                // Previously this branch never ran, so failures looked identical
-                // to successes. Now the real server-side error is shown — the
-                // server already returns a clean, student-friendly message (never
-                // raw API/exception text), so it's shown as-is with no extra wrapper.
-                document.getElementById('audioStatus').innerText = data.error || 'Something went wrong. Please try recording again.';
-                document.getElementById('recordBtn').disabled = false;
-                document.getElementById('recordBtn').innerText = "🎤 Start Recording";
-                document.getElementById('audioBackBtn').style.display = '';
+                // The recording is archived and logged for the teacher even when
+                // AI grading itself doesn't finish (e.g. the grader was overloaded)
+                // — nothing was lost, so there's no reason to send the student
+                // back to record again. This is treated as a normal submission,
+                // not an error.
+                document.getElementById('resultsDesc').innerHTML = `Your audio recording was submitted! Your teacher will follow up on the results.`;
             }
+            showBackToMenuState();
         })
         .catch(err => {
+            // A true network failure (request never reached the server, or the
+            // response couldn't be read) — unlike the case above, we can't be
+            // sure the recording was saved, so this one still reads as an error.
             isUploading = false;
-            document.getElementById('audioStatus').innerText = "An error occurred while uploading: " + err;
-            document.getElementById('recordBtn').disabled = false;
-            document.getElementById('recordBtn').innerText = "🎤 Start Recording";
-            document.getElementById('audioBackBtn').style.display = '';
+            document.getElementById('resultsDesc').innerHTML = `Something went wrong while uploading: ${err}. Please go back and try recording again.`;
+            showBackToMenuState();
         });
     }
 }

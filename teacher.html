@@ -108,6 +108,12 @@
   .detail-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
   .detail-chip { color: #6b6055; }
   a.detail-chip.audio-link { color: #2f6fa3; text-decoration: underline; cursor: pointer; }
+  .audio-retry-btn {
+    background: none; border: 1px solid #d3c7b7; color: #3e362e; padding: 3px 10px;
+    font-family: 'Lora', serif; font-size: 0.82rem; cursor: pointer; border-radius: 3px; margin-left: 4px;
+  }
+  .audio-retry-btn:hover { border-color: #3e362e; }
+  .audio-retry-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .detail-chip.muted { color: #a6998a; }
   .comparison-wrap { overflow-x: auto; margin-bottom: 26px; border: 1px solid #ece5d8; border-radius: 6px; }
   .comparison-table { width: auto; min-width: 100%; }
@@ -613,6 +619,70 @@ function buildAudioLink(row) {
     return a;
 }
 
+// A small button next to a "needs manual review" row that re-sends the
+// already-archived recording (by Drive file ID, nothing re-uploaded from the
+// student) to Gemini for grading. On success it overwrites the placeholder
+// row in the sheet with real scores and refreshes the dashboard in place.
+function buildAudioRetryButton(row) {
+    const btn = document.createElement('button');
+    btn.className = 'audio-retry-btn';
+    btn.textContent = '🔁 Retry AI Grading';
+    btn.addEventListener('click', () => retryAudioGrading(btn, row));
+    return btn;
+}
+
+function retryAudioGrading(btn, row) {
+    const password = el('passwordInput').value;
+    btn.disabled = true;
+    btn.textContent = 'Regrading...';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'retryAudioGrading',
+            payload: {
+                password: password,
+                timestamp: row['Timestamp'],
+                studentName: row['Student Name'],
+                audioUrl: row['Audio File']
+            }
+        }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            btn.disabled = false;
+            btn.textContent = '🔁 Retry AI Grading';
+            alert(data.error || 'Retry failed. Please try again.');
+            return;
+        }
+        // Re-pull the dashboard so this row now shows its real scores
+        // instead of the "needs manual review" placeholder.
+        fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'getDashboard', payload: { password: password } }),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        })
+        .then(res => res.json())
+        .then(refreshed => {
+            if (refreshed.success) {
+                dashboardData = refreshed.data;
+                dashboardDataVersion++;
+                renderTabContents();
+            } else {
+                btn.disabled = false;
+                btn.textContent = '🔁 Retry AI Grading';
+            }
+        });
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '🔁 Retry AI Grading';
+        alert('Could not reach the server: ' + err);
+    });
+}
+
 function buildAudioDetailLine(row) {
     const line = document.createElement('div');
     line.className = 'detail-line';
@@ -627,6 +697,12 @@ function buildAudioDetailLine(row) {
         line.appendChild(detailChip(row['Reading Summary'], true));
         const link = buildAudioLink(row);
         if (link) line.appendChild(link);
+        // The recording is archived even when grading failed, so a teacher
+        // can re-run AI grading on it later (e.g. once Gemini isn't
+        // overloaded anymore) without the student re-recording anything.
+        if (row['Audio File'] && row['Audio File'] !== '(not saved)') {
+            line.appendChild(buildAudioRetryButton(row));
+        }
         return line;
     }
 
