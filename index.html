@@ -250,6 +250,63 @@ const state = {
     skillsQueue: [], skillsIndex: 0, skillsHistory: [],
     naviQueue: [], naviIndex: 0, naviHistory: []
 };
+
+// --- Mid-quiz autosave (Vocab/Knowledge/Skills/Navi) ------------------
+// A closed tab, a sleeping Chromebook, or a crash mid-quiz used to lose
+// everything, since answers were only ever sent to the backend once, at
+// the very end. This snapshots enough of `state` to localStorage after
+// every answer so a student can pick back up where they left off. Audio
+// recording isn't covered here — a single short take doesn't carry the
+// same multi-question loss risk, and a recording blob is impractical to
+// stash in localStorage anyway.
+//
+// Saves are scoped by BOTH quiz type and student name (school Chromebooks
+// are shared — one student's save should never resume into another
+// student's session) and expire after PROGRESS_MAX_AGE_MS so a save from
+// a previous day doesn't linger and confuse things. Every call is
+// wrapped defensively: a student should never be blocked by localStorage
+// being full, disabled (e.g. locked-down browser policy, private
+// browsing), or unavailable for any other reason.
+const PROGRESS_STORAGE_PREFIX = 'chumashProgress_';
+const PROGRESS_MAX_AGE_MS = 8 * 60 * 60 * 1000; // ~one school day
+
+function saveQuizProgress(quizType, data) {
+    try {
+        localStorage.setItem(PROGRESS_STORAGE_PREFIX + quizType, JSON.stringify({
+            name: state.name,
+            savedAt: Date.now(),
+            data: data
+        }));
+    } catch (e) {
+        // Best-effort only — losing autosave should never break the quiz itself.
+    }
+}
+
+// Returns the saved payload for this quiz type if it exists, belongs to
+// the CURRENTLY entered student name, and isn't too old — otherwise null
+// (and clears out anything stale/mismatched it finds along the way, so it
+// doesn't keep getting checked on every future visit).
+function loadQuizProgress(quizType) {
+    try {
+        const raw = localStorage.getItem(PROGRESS_STORAGE_PREFIX + quizType);
+        if (!raw) return null;
+        const saved = JSON.parse(raw);
+        const isFresh = saved && saved.savedAt && (Date.now() - saved.savedAt) < PROGRESS_MAX_AGE_MS;
+        if (!saved || !isFresh || saved.name !== state.name) {
+            clearQuizProgress(quizType);
+            return null;
+        }
+        return saved.data;
+    } catch (e) {
+        clearQuizProgress(quizType);
+        return null;
+    }
+}
+
+function clearQuizProgress(quizType) {
+    try { localStorage.removeItem(PROGRESS_STORAGE_PREFIX + quizType); } catch (e) { /* ignore */ }
+}
+
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
@@ -288,6 +345,17 @@ function goToHub() {
     hide('vocabBatchChoiceArea'); hide('vocabProgressBoard');
     hide('audioArea'); hide('resultsArea'); hide('reviewSheetArea');
     document.querySelector('.intake-container').classList.remove('wide');
+
+    // An explicit "Back to Menu" (only reachable once a quiz has actually
+    // finished — there's no mid-quiz exit button) means whatever was
+    // in-progress is done with, so drop its autosave too. Checked BEFORE
+    // the reset below wipes these arrays, and scoped to just the quiz(zes)
+    // that were actually active so an unrelated, still-unresumed save
+    // (e.g. a Knowledge attempt from yesterday) is never touched here.
+    if (state.history.length || state.questionCount) clearQuizProgress('vocab');
+    if (state.knowledgeQueue.length) clearQuizProgress('knowledge');
+    if (state.skillsQueue.length) clearQuizProgress('skills');
+    if (state.naviQueue.length) clearQuizProgress('navi');
 
     // Reset per-attempt state so a fresh vocab/knowledge/skills run or recording starts clean.
     // (vocabLearningPool/vocabMastered are NOT reset here — those persist
@@ -1071,6 +1139,27 @@ function startVocab() {
     hide('vocabBeginBtn');
     introText.textContent = 'Loading your progress…';
 
+    // An in-progress session's learning pool can be AHEAD of what's saved on
+    // the backend (that only syncs at finishVocab), so a resumed session
+    // restores straight from the local autosave instead of re-fetching —
+    // re-fetching here would silently roll back any progress made since the
+    // last full save.
+    const saved = loadQuizProgress('vocab');
+    const savedIsWellFormed = saved && Array.isArray(saved.history) && Array.isArray(saved.vocabLearningPool) &&
+        Array.isArray(saved.vocabMastered) && Array.isArray(saved.vocabMasteredThisSession);
+    if (savedIsWellFormed && (saved.history.length || saved.questionCount) &&
+        confirm("You have an unfinished Vocabulary Check-In from earlier. Resume where you left off?")) {
+        state.history = saved.history;
+        state.questionCount = saved.questionCount || 0;
+        state.vocabLearningPool = saved.vocabLearningPool;
+        state.vocabMastered = saved.vocabMastered;
+        state.vocabMasteredThisSession = saved.vocabMasteredThisSession;
+        introText.textContent = `Resuming — you've mastered ${saved.vocabMastered.length} of ${VOCAB_MASTERY_GOAL} words so far. Let's keep going!`;
+        show('vocabBeginBtn');
+        return;
+    }
+    clearQuizProgress('vocab');
+
     fetch(GAS_WEB_APP_URL, {
         method: 'POST',
         body: JSON.stringify({ action: 'getVocabState', payload: { name: state.name } }),
@@ -1087,6 +1176,7 @@ function startVocab() {
         fillVocabLearningPool(pool, mastered);
         state.vocabLearningPool = pool;
         state.vocabMastered = mastered;
+        state.vocabMasteredThisSession = [];
         introText.textContent = `You've mastered ${mastered.length} of ${VOCAB_MASTERY_GOAL} words so far. Let's keep going!`;
         show('vocabBeginBtn');
     })
@@ -1095,6 +1185,7 @@ function startVocab() {
         // from the beginning of the curriculum for this session.
         state.vocabLearningPool = fillVocabLearningPool([], []);
         state.vocabMastered = [];
+        state.vocabMasteredThisSession = [];
         introText.textContent = "Couldn't load your saved progress — starting from the beginning.";
         show('vocabBeginBtn');
     });
@@ -1102,7 +1193,10 @@ function startVocab() {
 
 function beginVocab() {
     hide('vocabIntroArea'); show('quizArea'); show('quizProgress'); show('vocabProgressBoard');
-    state.vocabMasteredThisSession = [];
+    // vocabMasteredThisSession is NOT reset here — it's already either
+    // freshly empty (new session, set in startVocab's fetch/catch) or
+    // restored from a resumed autosave, and clearing it unconditionally
+    // here would erase a resumed session's "Mastered" column.
     renderVocabProgressBoard();
     runNext();
 }
@@ -1379,6 +1473,13 @@ window.ans = (picked, q, isReview) => {
         // unchanged — "correct 3 times" is a cumulative count, not 3 in a row.
     }
     renderVocabProgressBoard();
+    saveQuizProgress('vocab', {
+        history: state.history,
+        questionCount: state.questionCount,
+        vocabLearningPool: state.vocabLearningPool,
+        vocabMastered: state.vocabMastered,
+        vocabMasteredThisSession: state.vocabMasteredThisSession
+    });
 
     if (state.questionCount % VOCAB_BATCH_SIZE === 0) {
         showVocabBatchChoice();
@@ -1902,7 +2003,21 @@ const KNOWLEDGE_BANK = [
   {"num": 442, "sefer": "Vayikra", "question": "The commandment of שַׁעֲטְנֵז refers to:", "options": ["Leaving over fruit at the corner of your field for the poor", "Not to leave the meat of a קָרְבָּן past the time it may be eaten", "The mitzvah to eat the meat of a קָרְבָּן in a holy place only", "Not wearing wool and linen garments together"], "correct": "Not wearing wool and linen garments together"},
 ];
 
-function startKnowledgeIntro() { hide('hubMenuArea'); show('knowledgeIntroArea'); }
+function startKnowledgeIntro() {
+    hide('hubMenuArea');
+    const saved = loadQuizProgress('knowledge');
+    if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
+        confirm("You have an unfinished Chumash Knowledge Check-In. Resume where you left off?")) {
+        state.knowledgeQueue = saved.queue;
+        state.knowledgeIndex = saved.index || 0;
+        state.knowledgeHistory = saved.history;
+        show('quizArea'); show('quizProgress');
+        runKnowledgeNext();
+        return;
+    }
+    clearQuizProgress('knowledge');
+    show('knowledgeIntroArea');
+}
 
 function beginKnowledge() {
     state.knowledgeHistory = [];
@@ -1929,6 +2044,7 @@ window.ansKnowledge = (picked, q) => {
     const isCorrect = (picked === q.correct);
     state.knowledgeHistory.push({ num: q.num, sefer: q.sefer, question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped" });
     state.knowledgeIndex++;
+    saveQuizProgress('knowledge', { queue: state.knowledgeQueue, index: state.knowledgeIndex, history: state.knowledgeHistory });
     runKnowledgeNext();
 };
 
@@ -2124,7 +2240,21 @@ const NAVI_BANK = [
 const NAVI_DRAW_COUNTS = { 'Yehoshua': 2, 'Shoftim': 1, 'Shmuel I': 5, 'Shmuel II': 4, 'Megillat Esther': 1, 'Megillat Rut': 1, 'Sefer Yonah': 1 };
 const NAVI_SEFARIM = Object.keys(NAVI_DRAW_COUNTS);
 
-function startNaviIntro() { hide('hubMenuArea'); show('naviIntroArea'); }
+function startNaviIntro() {
+    hide('hubMenuArea');
+    const saved = loadQuizProgress('navi');
+    if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
+        confirm("You have an unfinished Navi Knowledge Check-In. Resume where you left off?")) {
+        state.naviQueue = saved.queue;
+        state.naviIndex = saved.index || 0;
+        state.naviHistory = saved.history;
+        show('quizArea'); show('quizProgress');
+        runNaviNext();
+        return;
+    }
+    clearQuizProgress('navi');
+    show('naviIntroArea');
+}
 
 function beginNavi() {
     state.naviHistory = [];
@@ -2151,6 +2281,7 @@ window.ansNavi = (picked, q) => {
     const isCorrect = (picked === q.correct);
     state.naviHistory.push({ num: q.num, sefer: q.sefer, question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped" });
     state.naviIndex++;
+    saveQuizProgress('navi', { queue: state.naviQueue, index: state.naviIndex, history: state.naviHistory });
     runNaviNext();
 };
 
@@ -7653,7 +7784,21 @@ const SKILLS_BANK = [
   },
 ];
 
-function startSkillsIntro() { hide('hubMenuArea'); show('skillsIntroArea'); }
+function startSkillsIntro() {
+    hide('hubMenuArea');
+    const saved = loadQuizProgress('skills');
+    if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
+        confirm("You have an unfinished Chumash Skills Check-In. Resume where you left off?")) {
+        state.skillsQueue = saved.queue;
+        state.skillsIndex = saved.index || 0;
+        state.skillsHistory = saved.history;
+        show('quizArea'); show('quizProgress');
+        runSkillsNext();
+        return;
+    }
+    clearQuizProgress('skills');
+    show('skillsIntroArea');
+}
 
 function beginSkills() {
     state.skillsHistory = [];
@@ -7705,6 +7850,7 @@ window.ansSkills = (picked, q) => {
         question: q.question, correct: isCorrect, picked: picked ? picked : "Skipped"
     });
     state.skillsIndex++;
+    saveQuizProgress('skills', { queue: state.skillsQueue, index: state.skillsIndex, history: state.skillsHistory });
     runSkillsNext();
 };
 
