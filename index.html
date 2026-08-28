@@ -118,6 +118,10 @@
     background: none; border: none; color: #7c93ac; text-decoration: underline; cursor: pointer; font-size: 0.85rem; padding: 0;
   }
   .review-answer { margin-top: 8px; font-weight: 600; color: #3c6b2e; }
+  .answer-review-line { font-size: 0.95rem; margin-top: 4px; }
+  .answer-review-correct { color: #3c6b2e; font-weight: 600; }
+  .answer-review-incorrect { color: #a3423a; font-weight: 600; }
+  .answer-review-correct-answer { color: #3c6b2e; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -220,8 +224,15 @@
         <button id="audioBackBtn" class="intake-skip" onclick="goToHub()">&larr; Back</button>
     </div>
     <div id="resultsArea" class="hidden"><h2 id="resultsTitle">Task Complete</h2><p id="resultsDesc"></p>
+        <button class="intake-choice hidden" id="reviewAnswersBtn" onclick="showAnswerReview()">Review Your Answers</button>
         <button class="intake-choice" id="resultsBackBtn" onclick="goToHub()">Back to Menu</button>
         <div id="resultsSubmitProgress" class="submit-progress-track hidden"><div class="submit-progress-fill"></div></div>
+    </div>
+    <div id="answerReviewArea" class="hidden">
+        <h2>Your Answers</h2>
+        <p id="answerReviewSummary" class="review-status"></p>
+        <div id="answerReviewContent"></div>
+        <button class="intake-choice" onclick="hideAnswerReview()">&larr; Back to Results</button>
     </div>
     <div id="reviewSheetArea" class="hidden">
         <h2>Personalized Review Sheet</h2>
@@ -248,7 +259,10 @@ const state = {
     history: [], questionCount: 0, vocabLearningPool: [], vocabMastered: [], vocabMasteredThisSession: [],
     knowledgeQueue: [], knowledgeIndex: 0, knowledgeHistory: [],
     skillsQueue: [], skillsIndex: 0, skillsHistory: [],
-    naviQueue: [], naviIndex: 0, naviHistory: []
+    naviQueue: [], naviIndex: 0, naviHistory: [],
+    // Which check-in's history to show on the post-quiz "Review Your
+    // Answers" screen — set by whichever finishX() just ran.
+    lastReviewType: null
 };
 
 // --- Mid-quiz autosave (Vocab/Knowledge/Skills/Navi) ------------------
@@ -344,6 +358,8 @@ function goToHub() {
     hide('vocabIntroArea'); hide('knowledgeIntroArea'); hide('skillsIntroArea'); hide('naviIntroArea'); hide('quizArea'); hide('quizProgress');
     hide('vocabBatchChoiceArea'); hide('vocabProgressBoard');
     hide('audioArea'); hide('resultsArea'); hide('reviewSheetArea');
+    hide('answerReviewArea'); hide('reviewAnswersBtn');
+    state.lastReviewType = null;
     document.querySelector('.intake-container').classList.remove('wide');
 
     // An explicit "Back to Menu" (only reachable once a quiz has actually
@@ -738,6 +754,125 @@ function buildReviewQuestion(item) {
     wrap.appendChild(answer);
 
     return wrap;
+}
+
+// --- Review Your Answers (shown right after finishing ONE check-in) ---
+// Distinct from the "Generate Review Sheet" feature above, which builds
+// NEW practice questions from a student's history of misses across many
+// past attempts. This instead shows exactly what the student just
+// answered on the attempt they just submitted — every question, what they
+// picked, and (when wrong) the correct answer — all at once, since the
+// attempt is already over and there's nothing left to "give away."
+//
+// History entries only ever stored a correct/incorrect flag plus enough
+// of a key to find the original question again (ri / num / id) — not the
+// full question or its correct answer — so this looks each one back up
+// from the same in-memory bank the quiz itself drew from, rather than
+// widening what's stored in history or sent to the backend.
+const ANSWER_REVIEW_CONFIG = {
+    vocab: {
+        getHistory: () => state.history,
+        lookup: (h) => QUESTION_BANK.find(w => w.ri === h.ri),
+        buildQuestion: (wrap, full) => {
+            wrap.classList.add('hebrew-word');
+            wrap.textContent = full.display;
+        },
+        correctAnswer: (full) => full.meaning
+    },
+    knowledge: {
+        getHistory: () => state.knowledgeHistory,
+        lookup: (h) => KNOWLEDGE_BANK.find(q => q.num === h.num),
+        buildQuestion: (wrap, full) => { wrap.textContent = full.question; },
+        correctAnswer: (full) => full.correct
+    },
+    navi: {
+        getHistory: () => state.naviHistory,
+        lookup: (h) => NAVI_BANK.find(q => q.num === h.num),
+        buildQuestion: (wrap, full) => { wrap.textContent = full.question; },
+        correctAnswer: (full) => full.correct
+    },
+    skills: {
+        getHistory: () => state.skillsHistory,
+        lookup: (h) => SKILLS_BANK.find(q => q.id === h.id),
+        buildQuestion: (wrap, full) => {
+            // The 3 fixed Rashi questions need the full pasuk/Rashi passage
+            // shown again for the answer to make sense at all — a bare
+            // "Standard 25" question stem alone wouldn't be reviewable.
+            if (full.fixed) {
+                appendFixedRashiPassage(wrap, full);
+            } else {
+                renderRichText(wrap, full.question);
+            }
+        },
+        correctAnswer: (full) => full.correct
+    }
+};
+
+const ANSWER_REVIEW_TITLES = {
+    vocab: 'Vocabulary Check-In',
+    knowledge: 'Chumash Knowledge Check-In',
+    skills: 'Chumash Skills Check-In',
+    navi: 'Navi Knowledge Check-In'
+};
+
+function showAnswerReview() {
+    document.querySelector('.intake-container').classList.add('wide');
+    hide('resultsArea');
+    show('answerReviewArea');
+    renderAnswerReview(state.lastReviewType);
+}
+
+function hideAnswerReview() {
+    document.querySelector('.intake-container').classList.remove('wide');
+    hide('answerReviewArea');
+    show('resultsArea');
+}
+
+function renderAnswerReview(quizType) {
+    const contentEl = document.getElementById('answerReviewContent');
+    const summaryEl = document.getElementById('answerReviewSummary');
+    contentEl.innerHTML = '';
+
+    const config = ANSWER_REVIEW_CONFIG[quizType];
+    if (!config) { summaryEl.textContent = ''; return; }
+
+    const history = config.getHistory();
+    const correctCount = history.filter(h => h.correct).length;
+    summaryEl.textContent =
+        `${ANSWER_REVIEW_TITLES[quizType] || ''} — you got ${correctCount} of ${history.length} correct.`;
+
+    history.forEach(h => {
+        const full = config.lookup(h);
+        const item = document.createElement('div');
+        item.className = 'review-question';
+
+        const qText = document.createElement('div');
+        qText.className = 'review-question-text';
+        if (full) {
+            config.buildQuestion(qText, full);
+        } else {
+            // Bank entry couldn't be found (shouldn't happen — the banks
+            // don't change mid-session) — fall back to whatever text was
+            // already captured in history rather than showing a blank line.
+            qText.textContent = h.question || h.word || '(question unavailable)';
+        }
+        item.appendChild(qText);
+
+        const pickedLine = document.createElement('div');
+        pickedLine.className = 'answer-review-line ' + (h.correct ? 'answer-review-correct' : 'answer-review-incorrect');
+        const pickedText = (h.picked && h.picked !== 'Skipped') ? h.picked : '(skipped)';
+        pickedLine.textContent = (h.correct ? '✓ Your answer: ' : '✗ Your answer: ') + pickedText;
+        item.appendChild(pickedLine);
+
+        if (!h.correct && full) {
+            const correctLine = document.createElement('div');
+            correctLine.className = 'answer-review-line answer-review-correct-answer';
+            correctLine.textContent = 'Correct answer: ' + config.correctAnswer(full);
+            item.appendChild(correctLine);
+        }
+
+        contentEl.appendChild(item);
+    });
 }
 
 // Official Chumash Vocabulary list (340 words: the original 281 plus 59 added
@@ -1357,13 +1492,11 @@ function renderChoiceQuestion(displayText, options, onPick, { hebrew = false, ri
 // directly from structured fields (pasukText/rashiHe/rashiEn/questionStem) so
 // "פָּסוּק" and "רַשִׁ"י" can be shown as bold section labels on their own
 // lines, and the Rashi's Hebrew comment itself can render in the Rashi font.
-function renderFixedRashiQuestion(q, onPick) {
-    const quizArea = document.getElementById('quizArea');
-    quizArea.innerHTML = '';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'intake-question-text rich-text';
-
+// Builds the pasuk -> Rashi -> question-stem DOM shared by the live fixed
+// Rashi question (below) and the post-quiz answer review (which needs the
+// same passage shown again, read-only, next to what the student picked).
+// Appends directly into `wrap`.
+function appendFixedRashiPassage(wrap, q) {
     const pasukLabel = document.createElement('div');
     pasukLabel.className = 'rich-label';
     pasukLabel.textContent = 'פָּסוּק';
@@ -1414,6 +1547,15 @@ function renderFixedRashiQuestion(q, onPick) {
     stemLine.style.marginTop = '0.9em';
     stemLine.textContent = q.questionStem;
     wrap.appendChild(stemLine);
+}
+
+function renderFixedRashiQuestion(q, onPick) {
+    const quizArea = document.getElementById('quizArea');
+    quizArea.innerHTML = '';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'intake-question-text rich-text';
+    appendFixedRashiPassage(wrap, q);
 
     quizArea.appendChild(wrap);
     renderOptionButtons(quizArea, q.options, onPick, false);
@@ -1509,6 +1651,8 @@ function continueVocabBatch() {
 function finishVocab() {
     hide('quizArea'); hide('quizProgress'); hide('vocabBatchChoiceArea'); hide('vocabProgressBoard');
     document.getElementById('resultsDesc').innerHTML = `Checking answers...`; show('resultsArea');
+    state.lastReviewType = 'vocab';
+    if (state.history.length) show('reviewAnswersBtn'); else hide('reviewAnswersBtn');
     showSubmittingState();
     const score = state.history.filter(h => h.correct).length;
 
@@ -2053,6 +2197,8 @@ function finishKnowledge() {
     document.getElementById('resultsDesc').innerHTML =
         `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
     show('resultsArea');
+    state.lastReviewType = 'knowledge';
+    if (state.knowledgeHistory.length) show('reviewAnswersBtn'); else hide('reviewAnswersBtn');
     showSubmittingState();
 
     const seferScores = {};
@@ -2290,6 +2436,8 @@ function finishNavi() {
     document.getElementById('resultsDesc').innerHTML =
         `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
     show('resultsArea');
+    state.lastReviewType = 'navi';
+    if (state.naviHistory.length) show('reviewAnswersBtn'); else hide('reviewAnswersBtn');
     showSubmittingState();
 
     const seferScores = {};
@@ -7859,6 +8007,8 @@ function finishSkills() {
     document.getElementById('resultsDesc').innerHTML =
         `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
     show('resultsArea');
+    state.lastReviewType = 'skills';
+    if (state.skillsHistory.length) show('reviewAnswersBtn'); else hide('reviewAnswersBtn');
     showSubmittingState();
 
     const categories = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills'];
