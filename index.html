@@ -92,6 +92,7 @@
     display: block; text-align: left; white-space: normal;
   }
   .rich-line { margin: 0 0 0.6em; }
+  .pasuk-num { font-weight: 700; font-size: 0.75em; }
   .rich-line:last-child { margin-bottom: 0; }
   .rich-label {
     font-family: 'Frank Ruhl Libre', serif; font-weight: bold; font-size: 1.25rem;
@@ -1383,9 +1384,18 @@ function renderVocabProgressBoard() {
 // used to right-justify pesukim and Rashi text without needing every call
 // site to say so explicitly.
 function isHebrewDominant(text) {
-    const hebrewLetters = (text.match(/[֐-׿]/g) || []).length;
-    const allLetters = (text.match(/[A-Za-z֐-׿]/g) || []).length;
-    return allLetters > 0 && hebrewLetters / allLetters > 0.5;
+    // Counts only actual Hebrew LETTERS (א-ת), not nikud/cantillation marks —
+    // those combining marks live in the same Unicode block but aren't
+    // letters. Counting them as if they were let a short, heavily-vocalized
+    // Hebrew technical term (e.g. "the דִּבּוּר הַמַתְחִיל of רַשִׁ"י") — each
+    // letter tripled or quadrupled by its own vowel points — numerically
+    // outweigh a sentence that's actually mostly English, flipping the whole
+    // line to RTL and scrambling the English word order (e.g. "What is the
+    // ___ of ___ on this ___?" rendering back-to-front).
+    const hebrewLetters = (text.match(/[א-ת]/g) || []).length;
+    const englishLetters = (text.match(/[A-Za-z]/g) || []).length;
+    const total = hebrewLetters + englishLetters;
+    return total > 0 && hebrewLetters / total > 0.5;
 }
 
 // Safely renders text that may contain \n line breaks and **bold** markers
@@ -1414,12 +1424,21 @@ function renderRichText(container, text) {
         } else {
             lineDiv.dir = 'ltr';
         }
-        const parts = line.split(/(\*\*[^*]+\*\*)/g);
+        // **bold** for emphasis (e.g. a Rashi's דיבור המתחיל); ^^small^^ for
+        // a small bolded label inline — used to prefix a pasuk with its
+        // verse number in gematria when several pesukim are shown together
+        // for context, without it competing visually with the pasuk itself.
+        const parts = line.split(/(\*\*[^*]+\*\*|\^\^[^^]+\^\^)/g);
         parts.forEach(part => {
             if (part.startsWith('**') && part.endsWith('**')) {
                 const strong = document.createElement('strong');
                 strong.textContent = part.slice(2, -2);
                 lineDiv.appendChild(strong);
+            } else if (part.startsWith('^^') && part.endsWith('^^')) {
+                const label = document.createElement('span');
+                label.className = 'pasuk-num';
+                label.textContent = part.slice(2, -2);
+                lineDiv.appendChild(label);
             } else if (part) {
                 lineDiv.appendChild(document.createTextNode(part));
             }
@@ -7376,7 +7395,18 @@ const SKILLS_BANK = [
       "id": 1199,
       "standard": 21,
       "rank": 1,
-      "question": "What is the first word in פֶּרֶק כ\"ד פָּסוּק מ״ז?",
+      // Unlike its sibling "Answer using לְשׁוֹן הַפָּסוּק" questions (which
+      // embed just the ONE pasuk being asked about, since those ask the
+      // student to read and answer from it), this one asks the student to
+      // LOCATE a specific pasuk by chapter:verse — showing only pasuk 47
+      // itself would hand over the answer for free. Instead it shows a
+      // short surrounding range (מ״ד-מ״ט / 44-49) with each pasuk labeled
+      // by its verse number in gematria, so finding "the first word of
+      // מ״ז" is a real navigation task. Source: Bereishit 24:44-49
+      // (Sefaria), vowelized text only (no cantillation, matching every
+      // other pasuk in this file), with ה'/אֱלֹקֵי substituted for the
+      // Divine Name per this file's existing convention.
+      "question": "What is the first word in פֶּרֶק כ\"ד פָּסוּק מ״ז?\n^^מ״ד^^ וְאָמְרָה אֵלַי גַּם־אַתָּה שְׁתֵה וְגַם לִגְמַלֶּיךָ אֶשְׁאָב הִוא הָאִשָּׁה אֲשֶׁר־הֹכִיחַ ה' לְבֶן־אֲדֹנִי׃\n^^מ״ה^^ אֲנִי טֶרֶם אֲכַלֶּה לְדַבֵּר אֶל־לִבִּי וְהִנֵּה רִבְקָה יֹצֵאת וְכַדָּהּ עַל־שִׁכְמָהּ וַתֵּרֶד הָעַיְנָה וַתִּשְׁאָב וָאֹמַר אֵלֶיהָ הַשְׁקִינִי נָא׃\n^^מ״ו^^ וַתְּמַהֵר וַתּוֹרֶד כַּדָּהּ מֵעָלֶיהָ וַתֹּאמֶר שְׁתֵה וְגַם־גְּמַלֶּיךָ אַשְׁקֶה וָאֵשְׁתְּ וְגַם הַגְּמַלִּים הִשְׁקָתָה׃\n^^מ״ז^^ וָאֶשְׁאַל אֹתָהּ וָאֹמַר בַּת־מִי אַתְּ וַתֹּאמֶר בַּת־בְּתוּאֵל בֶּן־נָחוֹר אֲשֶׁר יָלְדָה־לּוֹ מִלְכָּה וָאָשִׂם הַנֶּזֶם עַל־אַפָּהּ וְהַצְּמִידִים עַל־יָדֶיהָ׃\n^^מ״ח^^ וָאֶקֹּד וָאֶשְׁתַּחֲוֶה לַה' וָאֲבָרֵךְ אֶת־ה' אֱלֹקֵי אֲדֹנִי אַבְרָהָם אֲשֶׁר הִנְחַנִי בְּדֶרֶךְ אֱמֶת לָקַחַת אֶת־בַּת־אֲחִי אֲדֹנִי לִבְנוֹ׃\n^^מ״ט^^ וְעַתָּה אִם־יֶשְׁכֶם עֹשִׂים חֶסֶד וֶאֱמֶת אֶת־אֲדֹנִי הַגִּידוּ לִי וְאִם־לֹא הַגִּידוּ לִי וְאֶפְנֶה עַל־יָמִין אוֹ עַל־שְׂמֹאל׃",
       "options": [
           "ואשאל",
           "וַיַּעַן",
