@@ -48,6 +48,11 @@
     border-bottom: none; position: relative; top: 1px;
   }
   .tab-btn.active { background: #3e362e; color: #fff9f0; border-color: #3e362e; }
+  .tab-count-badge {
+    display: inline-block; background: #a33; color: #fff; font-size: 0.72rem; font-weight: 700;
+    border-radius: 999px; padding: 1px 7px; margin-left: 7px; vertical-align: 2px;
+  }
+  .tab-btn.active .tab-count-badge { background: #fff; color: #a33; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
   .hidden { display: none; }
@@ -128,6 +133,15 @@
   .comparison-table td:first-child { background: #fff; font-weight: 600; }
   .comparison-table .cell-empty { color: #c2b8a8; }
   .comparison-table .cell-pct + .cell-pct { margin-top: 4px; }
+  .review-intro { color: #6b6055; font-size: 0.9rem; margin: 0 0 20px; max-width: 640px; line-height: 1.5; }
+  .review-row {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 14px 4px; border-bottom: 1px solid #ece5d8;
+  }
+  .review-row:last-child { border-bottom: none; }
+  .review-row-name { width: 180px; flex-shrink: 0; font-weight: 600; color: #2c2520; }
+  .review-row-date { width: 150px; flex-shrink: 0; color: #a6998a; font-size: 0.85rem; }
+  .review-row-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -147,6 +161,7 @@
       <div class="tabs">
         <button class="tab-btn active" data-tab="averages">Class Averages</button>
         <button class="tab-btn" data-tab="history">Student History</button>
+        <button class="tab-btn" data-tab="review">🎧 Needs Review<span id="reviewCountBadge" class="tab-count-badge" hidden></span></button>
       </div>
       <div style="display:flex; gap:10px; align-items:center;">
         <select id="classFilterSelect" class="text-input" style="margin-bottom:0; width:auto; display:none;">
@@ -180,6 +195,11 @@
     </div>
 
     <div id="averagesPanel" class="tab-panel active"></div>
+
+    <div id="reviewPanel" class="tab-panel">
+      <p class="review-intro">Recordings that were saved but couldn't be AI-graded automatically (usually because the AI grader was busy) — nothing was lost, but each one needs either a retry or a manual listen. This list covers whichever students are selected above.</p>
+      <div id="reviewArea"></div>
+    </div>
   </div>
 </div>
 
@@ -597,6 +617,7 @@ function renderTabContents() {
     renderHistoryControls();
     renderHistory();
     renderAverages();
+    renderAudioReview();
 }
 
 // --- Per-student score rows ----------------------------------------------
@@ -773,13 +794,21 @@ function retryAudioGrading(btn, row) {
     });
 }
 
+// Shared check for whether one Audio Analysis row is a "needs manual
+// review" placeholder (Gemini failed/timed out, but the recording itself
+// was archived — see logAudioNeedsReview in Code.gs.txt) rather than a
+// real graded row. Used by the per-student detail line, the CSV export,
+// and the Needs Review tab below, so all three agree on exactly the same
+// definition.
+function isAudioNeedsReview(row) {
+    return !!row && (row['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+}
+
 // A "needs manual review" row (AI grading failed) has no Overall score, so
 // it's never usable as either side of a trend comparison — this treats it
 // the same as "no attempt" for that purpose.
 function audioOverallOrNull(row) {
-    if (!row) return null;
-    const needsReview = (row['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
-    if (needsReview) return null;
+    if (!row || isAudioNeedsReview(row)) return null;
     const overall = Number(row['Overall']);
     return isNaN(overall) ? null : overall;
 }
@@ -789,7 +818,7 @@ function buildAudioDetailLine(row, previousRow) {
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No submission yet', true)); return line; }
 
-    const needsReview = (row['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+    const needsReview = isAudioNeedsReview(row);
     if (needsReview) {
         const span = document.createElement('span');
         span.className = 'cell-pct pct-none';
@@ -995,7 +1024,7 @@ function exportStudentScoresCSV(scope, histories) {
 
         let audioText = 'No submission yet';
         if (audioRow) {
-            const needsReview = (audioRow['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+            const needsReview = isAudioNeedsReview(audioRow);
             audioText = needsReview
                 ? 'Needs manual review'
                 : (OVERALL_LABELS[Number(audioRow['Overall'])] || ('Overall: ' + audioRow['Overall'])) + (audioRow['WPM'] ? ' (' + audioRow['WPM'] + ' WPM)' : '');
@@ -1247,6 +1276,75 @@ function exportHistoryCSV() {
     downloadCSV(`chumash-history-${safeFilenamePart(scopeLabel)}-${todayStamp()}.csv`, toCSV(headers, rows));
 }
 el('historyExportBtn').addEventListener('click', exportHistoryCSV);
+
+// --- Needs Review tab ---------------------------------------------------
+// A school-wide (or class-filtered, via the same dropdown every other tab
+// uses) list of every audio submission stuck in "needs manual review" —
+// pulled straight from dashboardData.audio, so a teacher can find every
+// recording that still needs a retry or a manual listen without opening
+// each student's accordion row one at a time on the Class Averages tab.
+// Reuses buildAudioLink/buildAudioRetryButton from the per-student detail
+// line, so retrying here behaves identically (overwrites the row in place
+// and refreshes the whole dashboard on success).
+function renderAudioReview() {
+    const allowedNames = new Set(getFilteredStudentNames());
+    const reviewRows = (dashboardData.audio || [])
+        .filter(row => isAudioNeedsReview(row) && allowedNames.has((row['Student Name'] || '').toString().trim()))
+        .sort((a, b) => {
+            const da = toDate(a['Timestamp']), db = toDate(b['Timestamp']);
+            if (!da || !db) return 0;
+            return db - da; // newest first — most recent problem surfaces first
+        });
+
+    // The tab button's own count badge always reflects the current filter,
+    // so a teacher can see at a glance — without even switching tabs —
+    // whether anything in the selected scope needs attention.
+    const badge = el('reviewCountBadge');
+    if (reviewRows.length) {
+        badge.textContent = reviewRows.length;
+        badge.hidden = false;
+    } else {
+        badge.hidden = true;
+    }
+
+    const area = el('reviewArea');
+    area.innerHTML = '';
+
+    if (!reviewRows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-state';
+        empty.textContent = 'No recordings need review right now.';
+        area.appendChild(empty);
+        return;
+    }
+
+    reviewRows.forEach(row => {
+        const line = document.createElement('div');
+        line.className = 'review-row';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'review-row-name';
+        nameEl.textContent = row['Student Name'] || 'Unknown';
+        line.appendChild(nameEl);
+
+        const dateEl = document.createElement('div');
+        dateEl.className = 'review-row-date';
+        dateEl.textContent = fmtDate(row['Timestamp']);
+        line.appendChild(dateEl);
+
+        const detail = document.createElement('div');
+        detail.className = 'review-row-detail';
+        detail.appendChild(detailChip(row['Reading Summary'] || 'AI grading failed.', true));
+        const link = buildAudioLink(row);
+        if (link) detail.appendChild(link);
+        if (row['Audio File'] && row['Audio File'] !== '(not saved)') {
+            detail.appendChild(buildAudioRetryButton(row));
+        }
+        line.appendChild(detail);
+
+        area.appendChild(line);
+    });
+}
 
 // --- Class averages tab -----------------------------------------------
 // This is the landing tab. With "All Students" selected it shows averages
