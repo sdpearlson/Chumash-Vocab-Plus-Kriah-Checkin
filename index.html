@@ -7451,15 +7451,39 @@ function finishSkills() {
 
 function startAudio() { hide('hubMenuArea'); show('audioArea'); }
 
+// Chrome/Firefox/Android record audio as WebM (Opus); Safari and iOS Safari
+// (which is what every iPad browser actually runs, App Store rules aside)
+// don't support WebM at all — they record MP4 (AAC) instead. The old code
+// ignored this and just hardcoded 'audio/webm' on the Blob regardless of
+// what was actually recorded, which mislabeled every Safari/iPad
+// recording's bytes and broke both the archived Drive file and Gemini
+// grading for those students. This picks whichever container the browser
+// actually supports, and everything downstream (the Blob, the upload, what
+// gets saved to Drive, and what's sent to Gemini) uses the real,
+// browser-reported mimeType instead of assuming WebM.
+const AUDIO_MIME_CANDIDATES = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+function pickRecorderMimeType() {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+    for (const type of AUDIO_MIME_CANDIDATES) {
+        if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+    return ''; // let the browser pick its own default
+}
+
 async function toggleRecording() {
     const btn = document.getElementById('recordBtn');
     const status = document.getElementById('audioStatus');
 
     if (!isRecording) {
+        if (typeof MediaRecorder === 'undefined') {
+            alert("Audio recording isn't supported in this browser. Please try a different browser, or use a laptop/Chromebook instead.");
+            return;
+        }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             activeStream = stream;
-            mediaRecorder = new MediaRecorder(stream);
+            const preferredMimeType = pickRecorderMimeType();
+            mediaRecorder = preferredMimeType ? new MediaRecorder(stream, { mimeType: preferredMimeType }) : new MediaRecorder(stream);
             audioChunks = [];
             mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
             mediaRecorder.onstop = sendAudioToServer;
@@ -7497,7 +7521,10 @@ async function toggleRecording() {
 }
 
 function sendAudioToServer() {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    // Trust what the recorder actually produced (mediaRecorder.mimeType),
+    // not a hardcoded guess — see pickRecorderMimeType above.
+    const recordedMimeType = (mediaRecorder && mediaRecorder.mimeType) || 'audio/webm';
+    const audioBlob = new Blob(audioChunks, { type: recordedMimeType });
 
     // Guard against oversized recordings before spending time on upload.
     if (audioBlob.size > MAX_BLOB_BYTES) {
@@ -7529,7 +7556,7 @@ function sendAudioToServer() {
             method: "POST",
             body: JSON.stringify({
                 action: "processAudio",
-                payload: { base64Audio: base64Audio, studentName: state.name }
+                payload: { base64Audio: base64Audio, studentName: state.name, mimeType: recordedMimeType }
             }),
             headers: { "Content-Type": "text/plain;charset=utf-8" }
         })
