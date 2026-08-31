@@ -60,6 +60,10 @@
   .pct-mid { background: #fff3d6; color: #8a6d1f; }
   .pct-low { background: #f5dcdc; color: #a33; }
   .pct-none { color: #c2b8a8; }
+  .trend-badge { font-size: 0.78rem; font-weight: 600; margin-left: 6px; padding: 2px 7px; border-radius: 3px; display: inline-block; }
+  .trend-up { color: #3c6b2e; background: #e8f0e3; }
+  .trend-down { color: #a33; background: #f5dcdc; }
+  .trend-steady { color: #8a7c68; background: #f1ebe0; }
   .muted { color: #a6998a; font-size: 0.85rem; }
   .section-heading {
     font-family: 'Frank Ruhl Libre', serif; font-size: 1.2rem; margin: 30px 0 12px; color: #2c2520;
@@ -157,6 +161,7 @@
     <div id="historyPanel" class="tab-panel">
       <div class="history-controls">
         <select id="historyStudentSelect" class="text-input"></select>
+        <button class="btn-secondary" id="historyExportBtn">📥 Export CSV</button>
       </div>
       <div id="historyMatrixArea"></div>
       <div style="overflow-x:auto;">
@@ -195,6 +200,10 @@ const trendsSummaryCache = {};
 // Gemini response can't overwrite the page after the teacher has already
 // switched to a different filter.
 let trendsRenderToken = 0;
+// The exact rows currently shown in the History tab's table — kept in sync
+// by renderHistory() so the "Export CSV" button always exports precisely
+// what's on screen (same filters applied) without recomputing it separately.
+let currentHistoryRows = [];
 
 const KNOWLEDGE_SUBSECTIONS = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
 const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills (Gematria, Genuvah Patach, Aliyot)'];
@@ -297,6 +306,68 @@ function latestByStudent(rows) {
         }
     });
     return map;
+}
+
+// Same idea as latestByStudent, but keeps every row (sorted oldest-to-
+// newest) instead of collapsing to just the latest — needed to compare an
+// attempt against the one before it for the trend indicator below.
+function sortedRowsByStudent(rows) {
+    const map = new Map();
+    (rows || []).forEach(row => {
+        const name = (row['Student Name'] || '').toString().trim();
+        if (!name) return;
+        if (!map.has(name)) map.set(name, []);
+        map.get(name).push(row);
+    });
+    map.forEach(list => list.sort((a, b) => {
+        const da = toDate(a['Timestamp']), db = toDate(b['Timestamp']);
+        if (!da || !db) return 0;
+        return da - db;
+    }));
+    return map;
+}
+
+// The latest attempt and the one immediately before it, from one student's
+// sorted row list (see sortedRowsByStudent). `previous` is null when there's
+// only one attempt (or none) — callers use that to skip the trend badge
+// rather than compare against nothing.
+function latestAndPrevious(sortedList) {
+    if (!sortedList || !sortedList.length) return { latest: null, previous: null };
+    return {
+        latest: sortedList[sortedList.length - 1],
+        previous: sortedList.length > 1 ? sortedList[sortedList.length - 2] : null
+    };
+}
+
+// The actual "trend/decline indicator" the dashboard was missing — a small
+// ▲/▼/■ badge comparing the latest attempt to the one before it, so a
+// student who's been sliding doesn't look identical to one who's held
+// steady just because both show the same latest score. `isCount` is for
+// raw-number comparisons (Reading Fluency's 1-10 Overall score, Vocab
+// Mastery's word count) rather than percentage points, so the badge reads
+// "+2" instead of "+2pts". Returns null (render nothing) when there's no
+// previous attempt to compare against.
+function buildTrendBadge(latestVal, previousVal, isCount) {
+    if (latestVal === null || latestVal === undefined || isNaN(latestVal)) return null;
+    if (previousVal === null || previousVal === undefined || isNaN(previousVal)) return null;
+    const delta = latestVal - previousVal;
+    const threshold = isCount ? 0.5 : 3; // ignore noise smaller than this
+    const rounded = Math.round(Math.abs(delta));
+    const unit = isCount ? '' : (' pt' + (rounded === 1 ? '' : 's'));
+
+    const span = document.createElement('span');
+    span.title = 'Compared to the previous attempt';
+    if (Math.abs(delta) < threshold) {
+        span.className = 'trend-badge trend-steady';
+        span.textContent = '■ steady';
+    } else if (delta > 0) {
+        span.className = 'trend-badge trend-up';
+        span.textContent = '▲ +' + rounded + unit;
+    } else {
+        span.className = 'trend-badge trend-down';
+        span.textContent = '▼ −' + rounded + unit;
+    }
+    return span;
 }
 
 // Union of the roster sheet with every student name that appears in any
@@ -554,49 +625,68 @@ function detailChip(text, muted) {
 // Builds one section's horizontal detail line: a score badge followed by
 // whatever chips apply (sub-scores, group/mistake notes, AI recommendation
 // text), all laid out left-to-right and wrapping as needed.
-function buildVocabDetailLine(row) {
+function buildVocabDetailLine(row, previousRow) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const frac = parseFraction(row['Score']);
     line.appendChild(pctSpan(frac ? frac.pct : null));
+    const prevFrac = previousRow ? parseFraction(previousRow['Score']) : null;
+    const badge = buildTrendBadge(frac ? frac.pct : null, prevFrac ? prevFrac.pct : null);
+    if (badge) line.appendChild(badge);
     if (row['Assigned Group']) line.appendChild(detailChip('Group ' + row['Assigned Group'], true));
     if (row['Score']) line.appendChild(detailChip(row['Score'], true));
     if (row['Mistakes'] && row['Mistakes'] !== 'None') line.appendChild(detailChip('Missed: ' + row['Mistakes'], true));
     return line;
 }
 
-function buildVocabMasteryDetailLine(row) {
+// previousRow is accepted for consistency with the other detail-line
+// builders, but the "Vocab Mastery" sheet only ever keeps ONE upserted row
+// per student (current state, not an append log — see saveVocabState in
+// Code.gs.txt), so there's never actually a previous attempt to compare
+// against here and the trend badge won't appear. Showing a trend for this
+// one would need the sheet itself to start logging a new row per session
+// instead of overwriting in place.
+function buildVocabMasteryDetailLine(row, previousRow) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const count = Number(row['Total Mastered']) || 0;
     const pct = (count / VOCAB_MASTERY_GOAL) * 100;
     line.appendChild(pctSpan(pct, `(${count} / ${VOCAB_MASTERY_GOAL} words)`));
+    const prevCount = previousRow ? Number(previousRow['Total Mastered']) : null;
+    const badge = buildTrendBadge(count, prevCount, true);
+    if (badge) line.appendChild(badge);
     return line;
 }
 
 // Shared by Chumash Knowledge and Navi Knowledge, which have the same
 // shape: an overall "Total Score" fraction, per-sefer fraction columns,
 // and an "Areas to Focus On" recommendation.
-function buildFractionDetailLine(row, field, subsections, notesField) {
+function buildFractionDetailLine(row, previousRow, field, subsections, notesField) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const frac = parseFraction(row[field]);
     line.appendChild(pctSpan(frac ? frac.pct : null));
+    const prevFrac = previousRow ? parseFraction(previousRow[field]) : null;
+    const badge = buildTrendBadge(frac ? frac.pct : null, prevFrac ? prevFrac.pct : null);
+    if (badge) line.appendChild(badge);
     if (row[field]) line.appendChild(detailChip('Total: ' + row[field], true));
     (subsections || []).forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
     if (notesField && row[notesField]) line.appendChild(detailChip(row[notesField], true));
     return line;
 }
 
-function buildSkillsDetailLine(row) {
+function buildSkillsDetailLine(row, previousRow) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
     const pct = parsePercent(row['Percentage']);
     line.appendChild(pctSpan(pct));
+    const prevPct = previousRow ? parsePercent(previousRow['Percentage']) : null;
+    const badge = buildTrendBadge(pct, prevPct);
+    if (badge) line.appendChild(badge);
     if (row['Total Score']) line.appendChild(detailChip('Total: ' + row['Total Score'], true));
     SKILLS_SUBSECTIONS.forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
     if (row['Areas to Focus On']) line.appendChild(detailChip(row['Areas to Focus On'], true));
@@ -683,7 +773,18 @@ function retryAudioGrading(btn, row) {
     });
 }
 
-function buildAudioDetailLine(row) {
+// A "needs manual review" row (AI grading failed) has no Overall score, so
+// it's never usable as either side of a trend comparison — this treats it
+// the same as "no attempt" for that purpose.
+function audioOverallOrNull(row) {
+    if (!row) return null;
+    const needsReview = (row['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+    if (needsReview) return null;
+    const overall = Number(row['Overall']);
+    return isNaN(overall) ? null : overall;
+}
+
+function buildAudioDetailLine(row, previousRow) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No submission yet', true)); return line; }
@@ -712,6 +813,8 @@ function buildAudioDetailLine(row) {
     span.className = 'cell-pct ' + pctClass(pct);
     span.textContent = OVERALL_LABELS[overall] || ('Overall: ' + row['Overall']);
     line.appendChild(span);
+    const badge = buildTrendBadge(audioOverallOrNull(row), audioOverallOrNull(previousRow), true);
+    if (badge) line.appendChild(badge);
     if (row['WPM']) line.appendChild(detailChip(row['WPM'] + ' WPM', true));
     AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => { if (row[dim]) line.appendChild(detailChip(dim + ': ' + row[dim], true)); });
     if (row['Reading Summary']) line.appendChild(detailChip(row['Reading Summary'], true));
@@ -733,8 +836,11 @@ function buildDetailRow(label, lineNode) {
 }
 
 // One collapsible row: student name + arrow, expanding to the five section
-// detail rows, indented underneath.
-function buildStudentRow(name, latest) {
+// detail rows, indented underneath. `histories` holds every attempt per
+// section (see sortedRowsByStudent), not just the latest, so each detail
+// line can show a trend badge comparing the latest attempt to the one
+// before it.
+function buildStudentRow(name, histories) {
     const rowWrap = document.createElement('div');
     rowWrap.className = 'student-row';
 
@@ -748,14 +854,21 @@ function buildStudentRow(name, latest) {
     toggle.appendChild(document.createTextNode(' ' + name));
     rowWrap.appendChild(toggle);
 
+    const vocabLP = latestAndPrevious(histories.vocab.get(name) || []);
+    const masteryLP = latestAndPrevious(histories.vocabMastery.get(name) || []);
+    const knowledgeLP = latestAndPrevious(histories.knowledge.get(name) || []);
+    const skillsLP = latestAndPrevious(histories.skills.get(name) || []);
+    const naviLP = latestAndPrevious(histories.navi.get(name) || []);
+    const audioLP = latestAndPrevious(histories.audio.get(name) || []);
+
     const detail = document.createElement('div');
     detail.className = 'student-detail hidden';
-    detail.appendChild(buildDetailRow('Vocabulary', buildVocabDetailLine(latest.vocab.get(name))));
-    detail.appendChild(buildDetailRow('Vocab Mastery', buildVocabMasteryDetailLine(latest.vocabMastery.get(name))));
-    detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(latest.knowledge.get(name), 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On')));
-    detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(latest.skills.get(name))));
-    detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(latest.navi.get(name), 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On')));
-    detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(latest.audio.get(name))));
+    detail.appendChild(buildDetailRow('Vocabulary', buildVocabDetailLine(vocabLP.latest, vocabLP.previous)));
+    detail.appendChild(buildDetailRow('Vocab Mastery', buildVocabMasteryDetailLine(masteryLP.latest, masteryLP.previous)));
+    detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(knowledgeLP.latest, knowledgeLP.previous, 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(skillsLP.latest, skillsLP.previous)));
+    detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(naviLP.latest, naviLP.previous, 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(audioLP.latest, audioLP.previous)));
     rowWrap.appendChild(detail);
 
     toggle.addEventListener('click', () => {
@@ -768,22 +881,36 @@ function buildStudentRow(name, latest) {
 }
 
 // Builds the "each student's scores for each section" accordion shown at
-// the bottom of Class Averages once a specific class is selected.
+// the bottom of Class Averages once a specific class is selected, plus its
+// "Export CSV" button.
 function buildStudentScoresTable(scope) {
     const wrap = document.createElement('div');
+    const headingRow = document.createElement('div');
+    headingRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin:30px 0 12px;';
     const heading = document.createElement('div');
     heading.className = 'section-heading';
+    heading.style.margin = '0';
     heading.textContent = 'Individual student scores';
-    wrap.appendChild(heading);
+    headingRow.appendChild(heading);
 
-    const latest = {
-        vocab: latestByStudent(dashboardData.vocab || []),
-        vocabMastery: latestByStudent(dashboardData.vocabMastery || []),
-        knowledge: latestByStudent(dashboardData.knowledge || []),
-        skills: latestByStudent(dashboardData.skills || []),
-        navi: latestByStudent(dashboardData.navi || []),
-        audio: latestByStudent(dashboardData.audio || [])
+    const histories = {
+        vocab: sortedRowsByStudent(dashboardData.vocab || []),
+        vocabMastery: sortedRowsByStudent(dashboardData.vocabMastery || []),
+        knowledge: sortedRowsByStudent(dashboardData.knowledge || []),
+        skills: sortedRowsByStudent(dashboardData.skills || []),
+        navi: sortedRowsByStudent(dashboardData.navi || []),
+        audio: sortedRowsByStudent(dashboardData.audio || [])
     };
+
+    if (scope.students.length) {
+        const exportBtn = document.createElement('button');
+        exportBtn.type = 'button';
+        exportBtn.className = 'btn-secondary';
+        exportBtn.textContent = '📥 Export CSV';
+        exportBtn.addEventListener('click', () => exportStudentScoresCSV(scope, histories));
+        headingRow.appendChild(exportBtn);
+    }
+    wrap.appendChild(headingRow);
 
     if (!scope.students.length) {
         const empty = document.createElement('p');
@@ -793,8 +920,91 @@ function buildStudentScoresTable(scope) {
         return wrap;
     }
 
-    scope.students.forEach(name => wrap.appendChild(buildStudentRow(name, latest)));
+    scope.students.forEach(name => wrap.appendChild(buildStudentRow(name, histories)));
     return wrap;
+}
+
+// --- CSV export ------------------------------------------------------
+// Shared by both export buttons (the per-student scores table above, and
+// the History tab below) — plain-text, comma-and-quote-safe CSV built
+// entirely client-side, no server round-trip needed.
+
+function csvField(value) {
+    const str = (value === null || value === undefined) ? '' : String(value);
+    return /[",\r\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+}
+
+function toCSV(headers, rows) {
+    const lines = [headers.map(csvField).join(',')];
+    rows.forEach(row => lines.push(row.map(csvField).join(',')));
+    return lines.join('\r\n');
+}
+
+function todayStamp() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+// A UTF-8 BOM is prepended so Excel — which otherwise guesses the encoding
+// and mangles Hebrew text — opens this correctly instead of showing garbled
+// characters.
+function downloadCSV(filename, csvContent) {
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function safeFilenamePart(text) {
+    return (text || '').replace(/[^\w\- ]/g, '').trim() || 'All Students';
+}
+
+// One row per student — a flat "report card" snapshot of their latest
+// score in each section, for pulling into a report card or bringing to a
+// parent conversation without having to transcribe it off the screen.
+function exportStudentScoresCSV(scope, histories) {
+    const headers = ['Student', 'Vocabulary', 'Vocab Mastery', 'Chumash Knowledge', 'Chumash Skills', 'Navi Knowledge', 'Reading Fluency'];
+
+    const rows = scope.students.map(name => {
+        const vocabRow = latestAndPrevious(histories.vocab.get(name) || []).latest;
+        const masteryRow = latestAndPrevious(histories.vocabMastery.get(name) || []).latest;
+        const knowledgeRow = latestAndPrevious(histories.knowledge.get(name) || []).latest;
+        const skillsRow = latestAndPrevious(histories.skills.get(name) || []).latest;
+        const naviRow = latestAndPrevious(histories.navi.get(name) || []).latest;
+        const audioRow = latestAndPrevious(histories.audio.get(name) || []).latest;
+
+        const vocabText = vocabRow
+            ? fmtPct((parseFraction(vocabRow['Score']) || {}).pct ?? null) + (vocabRow['Score'] ? ' (' + vocabRow['Score'] + ')' : '')
+            : 'No attempt yet';
+        const masteryText = masteryRow
+            ? (Number(masteryRow['Total Mastered']) || 0) + ' / ' + VOCAB_MASTERY_GOAL + ' words'
+            : 'No attempt yet';
+        const knowledgeText = knowledgeRow
+            ? fmtPct((parseFraction(knowledgeRow['Total Score']) || {}).pct ?? null) + (knowledgeRow['Total Score'] ? ' (' + knowledgeRow['Total Score'] + ')' : '')
+            : 'No attempt yet';
+        const skillsText = skillsRow
+            ? fmtPct(parsePercent(skillsRow['Percentage'])) + (skillsRow['Total Score'] ? ' (' + skillsRow['Total Score'] + ')' : '')
+            : 'No attempt yet';
+        const naviText = naviRow
+            ? fmtPct((parseFraction(naviRow['Total Score']) || {}).pct ?? null) + (naviRow['Total Score'] ? ' (' + naviRow['Total Score'] + ')' : '')
+            : 'No attempt yet';
+
+        let audioText = 'No submission yet';
+        if (audioRow) {
+            const needsReview = (audioRow['Reading Summary'] || '').toString().indexOf('AI grading failed') === 0;
+            audioText = needsReview
+                ? 'Needs manual review'
+                : (OVERALL_LABELS[Number(audioRow['Overall'])] || ('Overall: ' + audioRow['Overall'])) + (audioRow['WPM'] ? ' (' + audioRow['WPM'] + ' WPM)' : '');
+        }
+
+        return [name, vocabText, masteryText, knowledgeText, skillsText, naviText, audioText];
+    });
+
+    downloadCSV(`chumash-scores-${safeFilenamePart(scope.label)}-${todayStamp()}.csv`, toCSV(headers, rows));
 }
 
 // --- History tab -----------------------------------------------------
@@ -979,6 +1189,7 @@ function renderHistory() {
         if (!da || !db) return 0;
         return db - da;
     });
+    currentHistoryRows = filtered; // read by exportHistoryCSV below — always matches what's on screen
 
     const tbody = el('historyTbody');
     tbody.innerHTML = '';
@@ -1025,6 +1236,17 @@ function renderHistory() {
         tbody.appendChild(tr);
     });
 }
+
+// Exports exactly what's currently in the History table (same student and
+// class/grade filters already applied via currentHistoryRows) as a CSV.
+function exportHistoryCSV() {
+    const headers = ['Date', 'Student', 'Section', 'Result', 'Notes'];
+    const rows = currentHistoryRows.map(a => [fmtDate(a.date), a.name || '', a.section, a.result, a.notes || '']);
+    const filterName = el('historyStudentSelect').value;
+    const scopeLabel = filterName || getFilterScope().label;
+    downloadCSV(`chumash-history-${safeFilenamePart(scopeLabel)}-${todayStamp()}.csv`, toCSV(headers, rows));
+}
+el('historyExportBtn').addEventListener('click', exportHistoryCSV);
 
 // --- Class averages tab -----------------------------------------------
 // This is the landing tab. With "All Students" selected it shows averages
