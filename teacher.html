@@ -86,6 +86,15 @@
   .empty-state { color: #a6998a; text-align: center; padding: 40px 0; font-style: italic; }
   .history-controls { display: flex; gap: 12px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; }
   .history-controls select { max-width: 280px; }
+  .search-box { position: relative; flex: 1; min-width: 200px; }
+  .search-box input { padding-left: 34px; margin-bottom: 0; }
+  .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #a6998a; font-size: 0.9rem; pointer-events: none; }
+  .result-count { color: #a6998a; font-size: 0.85rem; white-space: nowrap; }
+  .sortable-th { cursor: pointer; user-select: none; }
+  .sortable-th:hover { background: #f3ead9; }
+  .sortable-th.sorted { border-bottom: 2px solid #3e362e; }
+  .sortable-th .sort-arrow { display: inline-block; margin-left: 5px; font-size: 0.75em; opacity: 0; transition: opacity 0.15s ease; }
+  .sortable-th.sorted .sort-arrow { opacity: 1; }
   .attempt-detail { font-size: 0.85rem; color: #6b6055; white-space: pre-line; }
   .loading { text-align: center; padding: 60px 0; color: #a6998a; }
   .scope-heading { font-family: 'Frank Ruhl Libre', serif; font-size: 1.5rem; margin: 0 0 2px; color: #2c2520; }
@@ -176,18 +185,18 @@
     <div id="historyPanel" class="tab-panel">
       <div class="history-controls">
         <select id="historyStudentSelect" class="text-input"></select>
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="historySearchInput" class="text-input" placeholder="Search…">
+        </div>
+        <span class="result-count" id="historyResultCount"></span>
         <button class="btn-secondary" id="historyExportBtn">📥 Export CSV</button>
       </div>
       <div id="historyMatrixArea"></div>
       <div style="overflow-x:auto;">
         <table id="historyTable">
           <thead>
-            <tr>
-              <th>Date</th>
-              <th>Section</th>
-              <th>Result</th>
-              <th>Notes</th>
-            </tr>
+            <tr id="historyThead"></tr>
           </thead>
           <tbody id="historyTbody"></tbody>
         </table>
@@ -222,8 +231,23 @@ const trendsSummaryCache = {};
 let trendsRenderToken = 0;
 // The exact rows currently shown in the History tab's table — kept in sync
 // by renderHistory() so the "Export CSV" button always exports precisely
-// what's on screen (same filters applied) without recomputing it separately.
+// what's on screen (same filters, search, and sort already applied)
+// without recomputing it separately.
 let currentHistoryRows = [];
+// Sort + search state for the History tab's table — persists across
+// re-renders (Refresh, changing the student/class filter) until the
+// teacher changes it again, same as the filter dropdowns already do.
+let historySortKey = 'date';
+let historySortDir = 'desc';
+let historySearchTerm = '';
+
+const HISTORY_COLUMNS = [
+    { key: 'date', label: 'Date' },
+    { key: 'name', label: 'Student' },
+    { key: 'section', label: 'Section' },
+    { key: 'result', label: 'Result' },
+    { key: 'notes', label: 'Notes' }
+];
 
 const KNOWLEDGE_SUBSECTIONS = ['Bereishit', 'Shemot', 'Vayikra', 'Bamidbar', 'Devarim'];
 const SKILLS_SUBSECTIONS = ['Decoding the Text', 'Understanding the Text', 'Rashi Skills', 'Additional Skills (Gematria, Genuvah Patach, Aliyot)'];
@@ -869,6 +893,69 @@ function buildDetailRow(label, lineNode) {
 // section (see sortedRowsByStudent), not just the latest, so each detail
 // line can show a trend badge comparing the latest attempt to the one
 // before it.
+// The "sort by" dropdown on the individual student scores list below.
+// 'name' is the default (and only option that isn't a lowest-first score
+// sort); the rest match the six detail rows every student row expands to.
+const SCORE_SORT_OPTIONS = [
+    { key: 'name', label: 'Name (A–Z)' },
+    { key: 'vocab', label: 'Vocabulary (lowest first)' },
+    { key: 'vocabMastery', label: 'Vocab Mastery (lowest first)' },
+    { key: 'knowledge', label: 'Chumash Knowledge (lowest first)' },
+    { key: 'skills', label: 'Chumash Skills (lowest first)' },
+    { key: 'navi', label: 'Navi Knowledge (lowest first)' },
+    { key: 'audio', label: 'Reading Fluency (lowest first)' }
+];
+
+// The numeric value one student sorts by for a given SCORE_SORT_OPTIONS
+// key — always their LATEST attempt in that section, on the same scale
+// shown on screen (a percentage for the four percentage-based sections,
+// mastered-word-count for Vocab Mastery, the 1-10 score for Reading
+// Fluency) so "lowest first" means exactly what it says. Returns null for
+// "no attempt yet in this section" — sortStudentsByMetric below always
+// pushes those to the end, since a student who hasn't tried a section
+// yet isn't the same as one who scored a real 0 on it.
+function studentMetricValue(name, histories, metricKey) {
+    const latestRow = (key) => latestAndPrevious(histories[key].get(name) || []).latest;
+    switch (metricKey) {
+        case 'vocab': {
+            const row = latestRow('vocab');
+            return row ? ((parseFraction(row['Score']) || {}).pct ?? null) : null;
+        }
+        case 'vocabMastery': {
+            const row = latestRow('vocabMastery');
+            return row ? (Number(row['Total Mastered']) || 0) : null;
+        }
+        case 'knowledge': {
+            const row = latestRow('knowledge');
+            return row ? ((parseFraction(row['Total Score']) || {}).pct ?? null) : null;
+        }
+        case 'skills': {
+            const row = latestRow('skills');
+            return row ? parsePercent(row['Percentage']) : null;
+        }
+        case 'navi': {
+            const row = latestRow('navi');
+            return row ? ((parseFraction(row['Total Score']) || {}).pct ?? null) : null;
+        }
+        case 'audio':
+            return audioOverallOrNull(latestRow('audio'));
+        default:
+            return null;
+    }
+}
+
+function sortStudentsByMetric(names, histories, metricKey) {
+    if (metricKey === 'name') return [...names].sort((a, b) => a.localeCompare(b));
+    return [...names].sort((a, b) => {
+        const va = studentMetricValue(a, histories, metricKey);
+        const vb = studentMetricValue(b, histories, metricKey);
+        if (va === null && vb === null) return a.localeCompare(b);
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        return va - vb;
+    });
+}
+
 function buildStudentRow(name, histories) {
     const rowWrap = document.createElement('div');
     rowWrap.className = 'student-row';
@@ -949,7 +1036,70 @@ function buildStudentScoresTable(scope) {
         return wrap;
     }
 
-    scope.students.forEach(name => wrap.appendChild(buildStudentRow(name, histories)));
+    // Search + sort controls for this list only — deliberately isolated
+    // from renderAverages()'s full re-render (which also rebuilds the
+    // stats/bars/AI trends summary above) so typing in the search box or
+    // changing the sort stays snappy and doesn't touch anything else on
+    // the tab.
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'history-controls';
+    controlsRow.style.margin = '0 0 16px';
+
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'search-box';
+    const searchIcon = document.createElement('span');
+    searchIcon.className = 'search-icon';
+    searchIcon.textContent = '🔍';
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'text-input';
+    searchInput.placeholder = 'Search by student name…';
+    searchWrap.appendChild(searchIcon);
+    searchWrap.appendChild(searchInput);
+    controlsRow.appendChild(searchWrap);
+
+    const sortSelect = document.createElement('select');
+    sortSelect.className = 'text-input';
+    sortSelect.style.cssText = 'max-width:260px; margin-bottom:0;';
+    SCORE_SORT_OPTIONS.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt.key;
+        o.textContent = opt.label;
+        sortSelect.appendChild(o);
+    });
+    controlsRow.appendChild(sortSelect);
+
+    const countEl = document.createElement('span');
+    countEl.className = 'result-count';
+    controlsRow.appendChild(countEl);
+
+    wrap.appendChild(controlsRow);
+
+    const listEl = document.createElement('div');
+    wrap.appendChild(listEl);
+
+    function renderList() {
+        const term = searchInput.value.trim().toLowerCase();
+        const names = sortStudentsByMetric(
+            scope.students.filter(n => n.toLowerCase().includes(term)),
+            histories, sortSelect.value
+        );
+        listEl.innerHTML = '';
+        if (!names.length) {
+            const empty = document.createElement('p');
+            empty.className = 'empty-state';
+            empty.textContent = 'No students match your search.';
+            listEl.appendChild(empty);
+        } else {
+            names.forEach(name => listEl.appendChild(buildStudentRow(name, histories)));
+        }
+        countEl.textContent = names.length + (names.length === 1 ? ' student' : ' students');
+    }
+
+    searchInput.addEventListener('input', renderList);
+    sortSelect.addEventListener('change', renderList);
+    renderList();
+
     return wrap;
 }
 
@@ -1180,6 +1330,38 @@ function renderHistoryMatrix(filterName) {
     area.appendChild(buildStudentComparisonMatrix(filterName));
 }
 
+// Builds the clickable header row for the History table from
+// HISTORY_COLUMNS — a plain click toggles which column historySortKey/Dir
+// point at and re-renders. Kept as its own function (rather than static
+// HTML) so it can reflect which column is currently active and which
+// direction, via the same understated fade-in-arrow treatment previewed
+// earlier.
+function renderHistoryHead() {
+    const theadRow = el('historyThead');
+    theadRow.innerHTML = '';
+    HISTORY_COLUMNS.forEach(col => {
+        const th = document.createElement('th');
+        th.className = 'sortable-th';
+        const isSorted = historySortKey === col.key;
+        th.classList.toggle('sorted', isSorted);
+        th.appendChild(document.createTextNode(col.label));
+        const arrow = document.createElement('span');
+        arrow.className = 'sort-arrow';
+        arrow.textContent = isSorted && historySortDir === 'asc' ? '▲' : '▼';
+        th.appendChild(arrow);
+        th.addEventListener('click', () => {
+            if (historySortKey === col.key) {
+                historySortDir = historySortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                historySortKey = col.key;
+                historySortDir = col.key === 'date' ? 'desc' : 'asc'; // newest-first for Date, A-Z for everything else
+            }
+            renderHistory();
+        });
+        theadRow.appendChild(th);
+    });
+}
+
 function renderHistory() {
     const filterName = el('historyStudentSelect').value;
     renderHistoryMatrix(filterName);
@@ -1213,12 +1395,36 @@ function renderHistory() {
 
     let filtered = attempts.filter(a => allowedNames.has((a.name || '').trim()));
     if (filterName) filtered = filtered.filter(a => (a.name || '').trim() === filterName);
+
+    // Free-text search across every visible field, not just the student
+    // name — e.g. typing "vocab" narrows to that section, "busy" turns up
+    // audio rows still needing manual review.
+    if (historySearchTerm) {
+        const term = historySearchTerm.toLowerCase();
+        filtered = filtered.filter(a =>
+            (a.name || '').toLowerCase().includes(term) ||
+            (a.section || '').toLowerCase().includes(term) ||
+            (a.result || '').toLowerCase().includes(term) ||
+            (a.notes || '').toLowerCase().includes(term)
+        );
+    }
+
     filtered.sort((a, b) => {
-        const da = toDate(a.date), db = toDate(b.date);
-        if (!da || !db) return 0;
-        return db - da;
+        let cmp;
+        if (historySortKey === 'date') {
+            const da = toDate(a.date), db = toDate(b.date);
+            cmp = (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+        } else {
+            cmp = (a[historySortKey] || '').toString().localeCompare(
+                (b[historySortKey] || '').toString(), undefined, { numeric: true, sensitivity: 'base' }
+            );
+        }
+        return historySortDir === 'asc' ? cmp : -cmp;
     });
     currentHistoryRows = filtered; // read by exportHistoryCSV below — always matches what's on screen
+
+    renderHistoryHead();
+    el('historyResultCount').textContent = filtered.length + (filtered.length === 1 ? ' result' : ' results');
 
     const tbody = el('historyTbody');
     tbody.innerHTML = '';
@@ -1226,9 +1432,9 @@ function renderHistory() {
     if (!filtered.length) {
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 4;
+        td.colSpan = HISTORY_COLUMNS.length;
         td.className = 'empty-state';
-        td.textContent = 'No attempts recorded yet.';
+        td.textContent = historySearchTerm ? 'No attempts match your search.' : 'No attempts recorded yet.';
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -1240,17 +1446,12 @@ function renderHistory() {
         dateTd.textContent = fmtDate(a.date);
         tr.appendChild(dateTd);
 
+        const nameTd = document.createElement('td');
+        nameTd.textContent = a.name || '—';
+        tr.appendChild(nameTd);
+
         const sectionTd = document.createElement('td');
-        if (!filterName) {
-            const strong = document.createElement('div');
-            strong.textContent = a.name;
-            strong.style.fontWeight = '600';
-            sectionTd.appendChild(strong);
-        }
-        const sectionLine = document.createElement('div');
-        sectionLine.textContent = a.section;
-        sectionLine.className = filterName ? '' : 'muted';
-        sectionTd.appendChild(sectionLine);
+        sectionTd.textContent = a.section;
         tr.appendChild(sectionTd);
 
         const resultTd = document.createElement('td');
@@ -1266,8 +1467,14 @@ function renderHistory() {
     });
 }
 
+el('historySearchInput').addEventListener('input', (e) => {
+    historySearchTerm = e.target.value;
+    renderHistory();
+});
+
 // Exports exactly what's currently in the History table (same student and
-// class/grade filters already applied via currentHistoryRows) as a CSV.
+// class/grade filters, search, and sort already applied via
+// currentHistoryRows) as a CSV.
 function exportHistoryCSV() {
     const headers = ['Date', 'Student', 'Section', 'Result', 'Notes'];
     const rows = currentHistoryRows.map(a => [fmtDate(a.date), a.name || '', a.section, a.result, a.notes || '']);
