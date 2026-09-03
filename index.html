@@ -2248,20 +2248,107 @@ const KNOWLEDGE_BANK = [
   {"num":442,"sefer":"Vayikra","question":"The commandment of שַׁעֲטְנֵז refers to:","options":["Leaving over fruit at the corner of your field for the poor","Not to leave the meat of a קָרְבָּן past the time it may be eaten","The mitzvah to eat the meat of a קָרְבָּן in a holy place only","Not wearing wool and linen garments together"]}
 ];
 
-function startKnowledgeIntro() {
+// --- Shared by the Knowledge/Navi/Skills "queued multiple-choice quiz" flow --
+// These three sections (unlike Vocab, which has its own adaptive-mastery
+// flow) all follow the identical shape: check for a resumable in-progress
+// attempt, walk a pre-built queue one question at a time updating the
+// progress bar, then submit the whole history to the server and merge the
+// server's grading back in. That shape used to be copy-pasted three times;
+// pulling it out means a fix to any of the three (the results-merging logic
+// in particular — the exact kind of code that quietly drifted before, see
+// the Chumash Skills answer-review bug) now applies everywhere at once.
+// Building the actual question queue (beginKnowledge/beginNavi/beginSkills)
+// and recording an answer (window.ansKnowledge/ansNavi/ansSkills) stay
+// separate below, since those genuinely differ per section — different
+// banks, different draw logic, and Skills records a couple of extra fields
+// (standard/category) the others don't have.
+
+function startChoiceQuizIntro(config) {
     hide('hubMenuArea');
-    const saved = loadQuizProgress('knowledge');
+    const saved = loadQuizProgress(config.quizType);
     if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
-        confirm("You have an unfinished Chumash Knowledge Check-In. Resume where you left off?")) {
-        state.knowledgeQueue = saved.queue;
-        state.knowledgeIndex = saved.index || 0;
-        state.knowledgeHistory = saved.history;
+        confirm(config.resumeConfirmMessage)) {
+        state[config.queueField] = saved.queue;
+        state[config.indexField] = saved.index || 0;
+        state[config.historyField] = saved.history;
         show('quizArea'); show('quizProgress');
-        runKnowledgeNext();
+        config.runNext();
         return;
     }
-    clearQuizProgress('knowledge');
-    show('knowledgeIntroArea');
+    clearQuizProgress(config.quizType);
+    show(config.introAreaId);
+}
+
+function runQueuedChoiceQuiz(config) {
+    const total = state[config.queueField].length;
+    if (state[config.indexField] >= total) return config.finish();
+    document.getElementById('progressBar').style.width = (state[config.indexField]/total*100)+'%';
+    const q = state[config.queueField][state[config.indexField]];
+    config.renderQuestion(q);
+}
+
+function finishChoiceQuiz(config) {
+    hide('quizArea'); hide('quizProgress');
+    document.getElementById('resultsDesc').innerHTML =
+        `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
+    show('resultsArea');
+    state.lastReviewType = config.quizType;
+    // The review-answers button stays hidden until the server confirms
+    // correctness for each question below — there's nothing to review yet.
+    hide('reviewAnswersBtn');
+    showSubmittingState();
+
+    // FETCH TO EXTERNAL APPS SCRIPT URL - the server grades every answer
+    // itself (against its own copy of the answer key) rather than trusting
+    // a client-reported correct/incorrect flag, and computes the per-group
+    // scores from that. It also asks Gemini for a short recommendation from
+    // those scores, so keep the beforeunload/isUploading protection on like
+    // audio.
+    isUploading = true;
+    fetch(GAS_WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+            action: config.action,
+            payload: { name: state.name, history: state[config.historyField] }
+        }),
+        headers: { "Content-Type": "text/plain;charset=utf-8" }
+    })
+    .then(res => res.json())
+    .then(data => {
+        isUploading = false;
+        if (data.success) {
+            // Merge the server's per-question correctness back into history
+            // (same order as submitted) so "Review Your Answers" can show
+            // what was right/wrong and the correct answer for misses.
+            if (Array.isArray(data.results)) {
+                data.results.forEach((r, i) => {
+                    if (state[config.historyField][i]) {
+                        state[config.historyField][i].correct = r.correct;
+                        state[config.historyField][i].correctAnswer = r.correctAnswer;
+                    }
+                });
+            }
+            if (state[config.historyField].length) show('reviewAnswersBtn');
+            // Scores and the AI recommendation are intentionally not shown here —
+            // these sections stay teacher-facing only, on their own Results tab
+            // of the Google Sheet.
+            document.getElementById('resultsDesc').innerHTML = config.successMessage;
+        } else {
+            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
+        }
+        showBackToMenuState();
+    })
+    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; showBackToMenuState(); });
+}
+
+function startKnowledgeIntro() {
+    startChoiceQuizIntro({
+        quizType: 'knowledge',
+        resumeConfirmMessage: "You have an unfinished Chumash Knowledge Check-In. Resume where you left off?",
+        queueField: 'knowledgeQueue', indexField: 'knowledgeIndex', historyField: 'knowledgeHistory',
+        introAreaId: 'knowledgeIntroArea',
+        runNext: runKnowledgeNext
+    });
 }
 
 function beginKnowledge() {
@@ -2278,11 +2365,11 @@ function beginKnowledge() {
 }
 
 function runKnowledgeNext() {
-    const total = state.knowledgeQueue.length;
-    if (state.knowledgeIndex >= total) return finishKnowledge();
-    document.getElementById('progressBar').style.width = (state.knowledgeIndex/total*100)+'%';
-    const q = state.knowledgeQueue[state.knowledgeIndex];
-    renderChoiceQuestion(q.question, q.options, (picked) => window.ansKnowledge(picked, q), { hebrew: false });
+    runQueuedChoiceQuiz({
+        queueField: 'knowledgeQueue', indexField: 'knowledgeIndex',
+        finish: finishKnowledge,
+        renderQuestion: (q) => renderChoiceQuestion(q.question, q.options, (picked) => window.ansKnowledge(picked, q), { hebrew: false })
+    });
 }
 
 window.ansKnowledge = (picked, q) => {
@@ -2297,57 +2384,12 @@ window.ansKnowledge = (picked, q) => {
 };
 
 function finishKnowledge() {
-    hide('quizArea'); hide('quizProgress');
-    document.getElementById('resultsDesc').innerHTML =
-        `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
-    show('resultsArea');
-    state.lastReviewType = 'knowledge';
-    // The review-answers button stays hidden until the server confirms
-    // correctness for each question below — there's nothing to review yet.
-    hide('reviewAnswersBtn');
-    showSubmittingState();
-
-    // FETCH TO EXTERNAL APPS SCRIPT URL - the server now grades every
-    // answer itself (against its own copy of the answer key) rather than
-    // trusting a client-reported correct/incorrect flag, and computes the
-    // per-sefer scores from that. It also asks Gemini for a short
-    // recommendation from those scores, so keep the beforeunload/isUploading
-    // protection on like audio.
-    isUploading = true;
-    fetch(GAS_WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "saveKnowledge",
-            payload: { name: state.name, history: state.knowledgeHistory }
-        }),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-    })
-    .then(res => res.json())
-    .then(data => {
-        isUploading = false;
-        if (data.success) {
-            // Merge the server's per-question correctness back into history
-            // (same order as submitted) so "Review Your Answers" can show
-            // what was right/wrong and the correct answer for misses.
-            if (Array.isArray(data.results)) {
-                data.results.forEach((r, i) => {
-                    if (state.knowledgeHistory[i]) {
-                        state.knowledgeHistory[i].correct = r.correct;
-                        state.knowledgeHistory[i].correctAnswer = r.correctAnswer;
-                    }
-                });
-            }
-            if (state.knowledgeHistory.length) show('reviewAnswersBtn');
-            // Scores and the AI recommendation are intentionally not shown here —
-            // for now this section stays teacher-facing only, on the Knowledge
-            // Results tab of the Google Sheet.
-            document.getElementById('resultsDesc').innerHTML = `Chumash Knowledge Check-In logged successfully!`;
-        } else {
-            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
-        }
-        showBackToMenuState();
-    })
-    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; showBackToMenuState(); });
+    finishChoiceQuiz({
+        quizType: 'knowledge',
+        action: 'saveKnowledge',
+        historyField: 'knowledgeHistory',
+        successMessage: 'Chumash Knowledge Check-In logged successfully!'
+    });
 }
 
 // Official Navi Knowledge question bank (134 questions: the original 58 plus
@@ -2502,19 +2544,13 @@ const NAVI_DRAW_COUNTS = { 'Yehoshua': 2, 'Shoftim': 1, 'Shmuel I': 5, 'Shmuel I
 const NAVI_SEFARIM = Object.keys(NAVI_DRAW_COUNTS);
 
 function startNaviIntro() {
-    hide('hubMenuArea');
-    const saved = loadQuizProgress('navi');
-    if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
-        confirm("You have an unfinished Navi Knowledge Check-In. Resume where you left off?")) {
-        state.naviQueue = saved.queue;
-        state.naviIndex = saved.index || 0;
-        state.naviHistory = saved.history;
-        show('quizArea'); show('quizProgress');
-        runNaviNext();
-        return;
-    }
-    clearQuizProgress('navi');
-    show('naviIntroArea');
+    startChoiceQuizIntro({
+        quizType: 'navi',
+        resumeConfirmMessage: "You have an unfinished Navi Knowledge Check-In. Resume where you left off?",
+        queueField: 'naviQueue', indexField: 'naviIndex', historyField: 'naviHistory',
+        introAreaId: 'naviIntroArea',
+        runNext: runNaviNext
+    });
 }
 
 function beginNavi() {
@@ -2531,11 +2567,11 @@ function beginNavi() {
 }
 
 function runNaviNext() {
-    const total = state.naviQueue.length;
-    if (state.naviIndex >= total) return finishNavi();
-    document.getElementById('progressBar').style.width = (state.naviIndex/total*100)+'%';
-    const q = state.naviQueue[state.naviIndex];
-    renderChoiceQuestion(q.question, q.options, (picked) => window.ansNavi(picked, q), { hebrew: false });
+    runQueuedChoiceQuiz({
+        queueField: 'naviQueue', indexField: 'naviIndex',
+        finish: finishNavi,
+        renderQuestion: (q) => renderChoiceQuestion(q.question, q.options, (picked) => window.ansNavi(picked, q), { hebrew: false })
+    });
 }
 
 window.ansNavi = (picked, q) => {
@@ -2548,50 +2584,12 @@ window.ansNavi = (picked, q) => {
 };
 
 function finishNavi() {
-    hide('quizArea'); hide('quizProgress');
-    document.getElementById('resultsDesc').innerHTML =
-        `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
-    show('resultsArea');
-    state.lastReviewType = 'navi';
-    // Stays hidden until the server grades the attempt below.
-    hide('reviewAnswersBtn');
-    showSubmittingState();
-
-    // FETCH TO EXTERNAL APPS SCRIPT URL - same pattern as Knowledge/Skills:
-    // the server grades every answer against its own answer key, computes
-    // the per-sefer scores from that, and asks Gemini for a short
-    // recommendation based on those scores and which questions were missed.
-    isUploading = true;
-    fetch(GAS_WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "saveNavi",
-            payload: { name: state.name, history: state.naviHistory }
-        }),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-    })
-    .then(res => res.json())
-    .then(data => {
-        isUploading = false;
-        if (data.success) {
-            if (Array.isArray(data.results)) {
-                data.results.forEach((r, i) => {
-                    if (state.naviHistory[i]) {
-                        state.naviHistory[i].correct = r.correct;
-                        state.naviHistory[i].correctAnswer = r.correctAnswer;
-                    }
-                });
-            }
-            if (state.naviHistory.length) show('reviewAnswersBtn');
-            // Teacher-facing only, same as Knowledge/Skills — scores and the
-            // AI recommendation live on the Navi Results tab of the Sheet.
-            document.getElementById('resultsDesc').innerHTML = `Navi Knowledge Check-In logged successfully!`;
-        } else {
-            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
-        }
-        showBackToMenuState();
-    })
-    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; showBackToMenuState(); });
+    finishChoiceQuiz({
+        quizType: 'navi',
+        action: 'saveNavi',
+        historyField: 'naviHistory',
+        successMessage: 'Navi Knowledge Check-In logged successfully!'
+    });
 }
 
 // Official Chumash Skills question bank (361 questions covering 28 of the 30
@@ -7332,19 +7330,13 @@ const SKILLS_BANK = [
 ];
 
 function startSkillsIntro() {
-    hide('hubMenuArea');
-    const saved = loadQuizProgress('skills');
-    if (saved && Array.isArray(saved.queue) && saved.queue.length && Array.isArray(saved.history) &&
-        confirm("You have an unfinished Chumash Skills Check-In. Resume where you left off?")) {
-        state.skillsQueue = saved.queue;
-        state.skillsIndex = saved.index || 0;
-        state.skillsHistory = saved.history;
-        show('quizArea'); show('quizProgress');
-        runSkillsNext();
-        return;
-    }
-    clearQuizProgress('skills');
-    show('skillsIntroArea');
+    startChoiceQuizIntro({
+        quizType: 'skills',
+        resumeConfirmMessage: "You have an unfinished Chumash Skills Check-In. Resume where you left off?",
+        queueField: 'skillsQueue', indexField: 'skillsIndex', historyField: 'skillsHistory',
+        introAreaId: 'skillsIntroArea',
+        runNext: runSkillsNext
+    });
 }
 
 function beginSkills() {
@@ -7375,18 +7367,20 @@ function beginSkills() {
 }
 
 function runSkillsNext() {
-    const total = state.skillsQueue.length;
-    if (state.skillsIndex >= total) return finishSkills();
-    document.getElementById('progressBar').style.width = (state.skillsIndex / total * 100) + '%';
-    const q = state.skillsQueue[state.skillsIndex];
-    if (q.fixed) {
-        renderFixedRashiQuestion(q, (picked) => window.ansSkills(picked, q));
-    } else {
-        renderChoiceQuestion(q.question, q.options, (picked) => window.ansSkills(picked, q), {
-            richText: true,
-            rashiOptions: q.displayMode === 'rashi_options'
-        });
-    }
+    runQueuedChoiceQuiz({
+        queueField: 'skillsQueue', indexField: 'skillsIndex',
+        finish: finishSkills,
+        renderQuestion: (q) => {
+            if (q.fixed) {
+                renderFixedRashiQuestion(q, (picked) => window.ansSkills(picked, q));
+            } else {
+                renderChoiceQuestion(q.question, q.options, (picked) => window.ansSkills(picked, q), {
+                    richText: true,
+                    rashiOptions: q.displayMode === 'rashi_options'
+                });
+            }
+        }
+    });
 }
 
 window.ansSkills = (picked, q) => {
@@ -7403,50 +7397,12 @@ window.ansSkills = (picked, q) => {
 };
 
 function finishSkills() {
-    hide('quizArea'); hide('quizProgress');
-    document.getElementById('resultsDesc').innerHTML =
-        `Submitting your answers...<br><span style="font-size:0.85rem;color:#7c93ac;">Please do not exit the app or close this window.</span>`;
-    show('resultsArea');
-    state.lastReviewType = 'skills';
-    // Stays hidden until the server grades the attempt below.
-    hide('reviewAnswersBtn');
-    showSubmittingState();
-
-    // FETCH TO EXTERNAL APPS SCRIPT URL - the server grades every answer
-    // against its own answer key and computes the per-category scores from
-    // that, same teacher-only pattern as Chumash Knowledge: an AI
-    // recommendation is generated server-side from those scores and the
-    // missed questions, but nothing score-related is shown to the student
-    // here.
-    isUploading = true;
-    fetch(GAS_WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify({
-            action: "saveSkills",
-            payload: { name: state.name, history: state.skillsHistory }
-        }),
-        headers: { "Content-Type": "text/plain;charset=utf-8" }
-    })
-    .then(res => res.json())
-    .then(data => {
-        isUploading = false;
-        if (data.success) {
-            if (Array.isArray(data.results)) {
-                data.results.forEach((r, i) => {
-                    if (state.skillsHistory[i]) {
-                        state.skillsHistory[i].correct = r.correct;
-                        state.skillsHistory[i].correctAnswer = r.correctAnswer;
-                    }
-                });
-            }
-            if (state.skillsHistory.length) show('reviewAnswersBtn');
-            document.getElementById('resultsDesc').innerHTML = `Chumash Skills Check-In logged successfully!`;
-        } else {
-            document.getElementById('resultsDesc').innerHTML = `Error saving data: ${data.error || 'Unknown error'}`;
-        }
-        showBackToMenuState();
-    })
-    .catch(err => { isUploading = false; document.getElementById('resultsDesc').innerHTML = `Error saving data: ${err}`; showBackToMenuState(); });
+    finishChoiceQuiz({
+        quizType: 'skills',
+        action: 'saveSkills',
+        historyField: 'skillsHistory',
+        successMessage: 'Chumash Skills Check-In logged successfully!'
+    });
 }
 
 function startAudio() { hide('hubMenuArea'); show('audioArea'); }
