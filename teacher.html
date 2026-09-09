@@ -217,14 +217,6 @@ const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxOsTcNWamk4Sk2
 
 let dashboardData = null; // { vocab: [], vocabMastery: [], knowledge: [], skills: [], navi: [], audio: [] }
 
-// Bumped every time dashboardData is replaced (login or Refresh) so cached
-// AI trend summaries — which are keyed off this — get regenerated instead
-// of showing stale text after new submissions come in.
-let dashboardDataVersion = 0;
-// Cache of already-generated trend summaries, keyed by filter value + data
-// version, so switching tabs or re-rendering doesn't re-call Gemini for a
-// scope we already have a summary for.
-const trendsSummaryCache = {};
 // Incremented on every renderAverages() call; used to make sure a slow
 // Gemini response can't overwrite the page after the teacher has already
 // switched to a different filter.
@@ -604,7 +596,6 @@ el('refreshBtn').addEventListener('click', () => {
         el('loadingArea').style.display = 'none';
         if (data.success) {
             dashboardData = data.data;
-            dashboardDataVersion++; // invalidate cached trend summaries — the numbers may have changed
             renderTabContents();
         }
     });
@@ -629,7 +620,6 @@ function renderAll() {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.querySelector('.tab-btn[data-tab="averages"]').classList.add('active');
     el('averagesPanel').classList.add('active');
-    dashboardDataVersion++;
     renderTabContents();
 }
 
@@ -803,7 +793,6 @@ function retryAudioGrading(btn, row) {
         .then(refreshed => {
             if (refreshed.success) {
                 dashboardData = refreshed.data;
-                dashboardDataVersion++;
                 renderTabContents();
             } else {
                 btn.disabled = false;
@@ -1705,57 +1694,137 @@ function computeTrendsStats(scope, vocabRows, knowledgeRows, skillsRows, naviRow
 }
 
 // Renders the AI-generated narrative block at the top of Class Averages.
-// Caches by filter value + data version so switching tabs/filters back and
-// forth doesn't keep re-calling Gemini, and guards against a slow response
-// landing after the teacher has already moved on to a different filter.
+// Generation only happens when the teacher explicitly clicks the
+// Generate/Update button below — it used to fire automatically on every
+// render (including every Refresh and every filter change), which burned
+// through the Gemini free tier's very tight daily quota for no real
+// benefit, since the underlying numbers rarely change meaningfully within
+// a day. The backend persists whatever was last generated per scope (All
+// Students / a grade / a class), so on every render this just fetches that
+// stored copy — a plain data read, no Gemini call — and shows how long ago
+// it was generated and how many submissions have come in since.
 function buildTrendsSummaryBlock(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows) {
     const wrap = document.createElement('div');
     wrap.className = 'trends-block';
+
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.justifyContent = 'space-between';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.gap = '12px';
     const heading = document.createElement('div');
     heading.className = 'section-heading';
+    heading.style.margin = '0';
     heading.textContent = 'Overview & Trends';
-    wrap.appendChild(heading);
+    const genBtn = document.createElement('button');
+    genBtn.className = 'btn-secondary';
+    genBtn.style.flexShrink = '0';
+    genBtn.textContent = 'Generate Summary';
+    headerRow.appendChild(heading);
+    headerRow.appendChild(genBtn);
+    wrap.appendChild(headerRow);
 
     const body = document.createElement('p');
     body.className = 'trends-text muted';
     wrap.appendChild(body);
 
+    const meta = document.createElement('p');
+    meta.className = 'muted';
+    meta.style.margin = '6px 0 0';
+    wrap.appendChild(meta);
+
     const stats = computeTrendsStats(scope, vocabRows, knowledgeRows, skillsRows, naviRows, audioRows);
     if (stats.totalSubmissions === 0) {
         body.textContent = `No submissions yet for ${scope.label} — check back once students have completed at least one check-in.`;
+        genBtn.style.display = 'none';
         return wrap;
     }
 
-    const cacheKey = (el('classFilterSelect').value || '') + '::' + dashboardDataVersion;
-    if (trendsSummaryCache[cacheKey]) {
-        body.className = 'trends-text';
-        body.textContent = trendsSummaryCache[cacheKey];
-        return wrap;
-    }
-
-    body.textContent = 'Generating summary…';
-
+    const scopeKey = el('classFilterSelect').value || '';
     const myToken = ++trendsRenderToken;
     const password = el('passwordInput').value;
+
+    function formatGeneratedAt(iso) {
+        try {
+            return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+        } catch (e) {
+            return iso;
+        }
+    }
+
+    // Shows a previously-generated summary (whether just-fetched from the
+    // store or just-returned from a fresh Generate/Update click) along with
+    // how many submissions have come in since it was written.
+    function renderStored(record) {
+        body.className = 'trends-text';
+        body.textContent = record.summary;
+        const newSince = Math.max(0, stats.totalSubmissions - (record.totalSubmissionsAtGeneration || 0));
+        meta.textContent = `Last updated ${formatGeneratedAt(record.generatedAt)} · ${newSince} new submission${newSince === 1 ? '' : 's'} since then`;
+        genBtn.textContent = newSince > 0 ? `Update Summary (${newSince} new)` : 'Update Summary';
+    }
+
+    function renderEmpty() {
+        body.className = 'trends-text muted';
+        body.textContent = `No summary generated yet for ${scope.label}.`;
+        meta.textContent = '';
+        genBtn.textContent = 'Generate Summary';
+    }
+
+    genBtn.addEventListener('click', () => {
+        genBtn.disabled = true;
+        const prevBtnText = genBtn.textContent;
+        genBtn.textContent = 'Generating…';
+        body.className = 'trends-text muted';
+        body.textContent = 'Generating summary…';
+        meta.textContent = '';
+        fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'getTrendsSummary', payload: { password, stats, scopeKey } }),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (myToken !== trendsRenderToken) return; // superseded by a newer render
+            genBtn.disabled = false;
+            if (data.success && data.summary) {
+                renderStored({
+                    summary: data.summary,
+                    generatedAt: data.generatedAt,
+                    totalSubmissionsAtGeneration: data.totalSubmissionsAtGeneration
+                });
+            } else {
+                body.className = 'trends-text muted';
+                body.textContent = data.error || 'Could not generate a summary right now.';
+                genBtn.textContent = prevBtnText;
+            }
+        })
+        .catch(() => {
+            if (myToken !== trendsRenderToken) return;
+            genBtn.disabled = false;
+            genBtn.textContent = prevBtnText;
+            body.className = 'trends-text muted';
+            body.textContent = 'Could not reach the server to generate a summary.';
+        });
+    });
+
+    body.textContent = 'Loading…';
     fetch(GAS_WEB_APP_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'getTrendsSummary', payload: { password, stats } }),
+        body: JSON.stringify({ action: 'getSavedTrendsSummary', payload: { password, scopeKey } }),
         headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     })
     .then(res => res.json())
     .then(data => {
         if (myToken !== trendsRenderToken) return; // superseded by a newer render
-        if (data.success && data.summary) {
-            trendsSummaryCache[cacheKey] = data.summary;
-            body.className = 'trends-text';
-            body.textContent = data.summary;
+        if (data.success && data.found) {
+            renderStored(data);
         } else {
-            body.textContent = data.error || 'Could not generate a summary right now.';
+            renderEmpty();
         }
     })
     .catch(() => {
         if (myToken !== trendsRenderToken) return;
-        body.textContent = 'Could not reach the server to generate a summary.';
+        renderEmpty();
     });
 
     return wrap;
