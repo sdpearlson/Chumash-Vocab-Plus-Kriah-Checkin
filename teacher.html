@@ -1641,7 +1641,7 @@ function computeSectionAverageList(vocabRows, knowledgeRows, skillsRows, naviRow
         { section: 'Chumash Knowledge', averagePct: avgField(knowledgeRows, 'Total Score') },
         { section: 'Chumash Skills', averagePct: average(skillsPcts) },
         { section: 'Navi Knowledge', averagePct: avgField(naviRows, 'Total Score') },
-        { section: 'Reading Fluency', averageOutOf4: average(audioOverallVals), averageWpm: average(wpmVals) }
+        { section: 'Reading Fluency', averageOutOf10: average(audioOverallVals), averageWpm: average(wpmVals) }
     ];
     if (!skipBreakdown) {
         list[1].breakdown = subAvgs(knowledgeRows, KNOWLEDGE_SUBSECTIONS);
