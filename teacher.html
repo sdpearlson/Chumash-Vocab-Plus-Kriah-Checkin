@@ -126,12 +126,12 @@
   .detail-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.85rem; flex: 1; min-width: 0; }
   .detail-chip { color: #6b6055; }
   a.detail-chip.audio-link { color: #2f6fa3; text-decoration: underline; cursor: pointer; }
-  .audio-retry-btn {
+  .retry-btn {
     background: none; border: 1px solid #d3c7b7; color: #3e362e; padding: 3px 10px;
     font-family: 'Lora', serif; font-size: 0.82rem; cursor: pointer; border-radius: 3px; margin-left: 4px;
   }
-  .audio-retry-btn:hover { border-color: #3e362e; }
-  .audio-retry-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .retry-btn:hover { border-color: #3e362e; }
+  .retry-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .detail-chip.muted { color: #a6998a; }
   .comparison-wrap { overflow-x: auto; margin-bottom: 26px; border: 1px solid #ece5d8; border-radius: 6px; }
   .comparison-table { width: auto; min-width: 100%; }
@@ -698,7 +698,7 @@ function buildVocabMasteryDetailLine(row, previousRow) {
 // Shared by Chumash Knowledge and Navi Knowledge, which have the same
 // shape: an overall "Total Score" fraction, per-sefer fraction columns,
 // and an "Areas to Focus On" recommendation.
-function buildFractionDetailLine(row, previousRow, field, subsections, notesField) {
+function buildFractionDetailLine(row, previousRow, field, subsections, notesField, quizType) {
     const line = document.createElement('div');
     line.className = 'detail-line';
     if (!row) { line.appendChild(detailChip('No attempt yet', true)); return line; }
@@ -709,7 +709,12 @@ function buildFractionDetailLine(row, previousRow, field, subsections, notesFiel
     if (badge) line.appendChild(badge);
     if (row[field]) line.appendChild(detailChip('Total: ' + row[field], true));
     (subsections || []).forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
-    if (notesField && row[notesField]) line.appendChild(detailChip(row[notesField], true));
+    if (notesField && row[notesField]) {
+        line.appendChild(detailChip(row[notesField], true));
+        if (quizType && isRecommendationNeedsReview(row[notesField])) {
+            line.appendChild(buildRecommendationRetryButton(row, quizType));
+        }
+    }
     return line;
 }
 
@@ -724,7 +729,12 @@ function buildSkillsDetailLine(row, previousRow) {
     if (badge) line.appendChild(badge);
     if (row['Total Score']) line.appendChild(detailChip('Total: ' + row['Total Score'], true));
     SKILLS_SUBSECTIONS.forEach(sub => { if (row[sub]) line.appendChild(detailChip(sub + ': ' + row[sub], true)); });
-    if (row['Areas to Focus On']) line.appendChild(detailChip(row['Areas to Focus On'], true));
+    if (row['Areas to Focus On']) {
+        line.appendChild(detailChip(row['Areas to Focus On'], true));
+        if (isRecommendationNeedsReview(row['Areas to Focus On'])) {
+            line.appendChild(buildRecommendationRetryButton(row, 'skills'));
+        }
+    }
     return line;
 }
 
@@ -750,7 +760,7 @@ function buildAudioLink(row) {
 // row in the sheet with real scores and refreshes the dashboard in place.
 function buildAudioRetryButton(row) {
     const btn = document.createElement('button');
-    btn.className = 'audio-retry-btn';
+    btn.className = 'retry-btn';
     btn.textContent = '🔁 Retry AI Grading';
     btn.addEventListener('click', () => retryAudioGrading(btn, row));
     return btn;
@@ -803,6 +813,79 @@ function retryAudioGrading(btn, row) {
     .catch(err => {
         btn.disabled = false;
         btn.textContent = '🔁 Retry AI Grading';
+        alert('Could not reach the server: ' + err);
+    });
+}
+
+// Shared check for whether a Knowledge/Skills/Navi row's "Areas to Focus
+// On" text is a failed-recommendation placeholder (see generateRecommendation
+// in Code.gs.txt — both its quota-specific and generic fallback messages
+// start with this same prefix) rather than a real AI recommendation.
+function isRecommendationNeedsReview(text) {
+    return !!text && text.toString().indexOf('Recommendation could not be generated') === 0;
+}
+
+// A small button next to a failed recommendation that re-sends the score
+// breakdown + missed questions already saved alongside that row (see the
+// "Recommendation Input" column in Code.gs.txt) to Gemini for another try —
+// nothing is re-submitted by the student. quizType tells the backend which
+// check-in's fixed prompt wording to use ('knowledge' | 'skills' | 'navi').
+function buildRecommendationRetryButton(row, quizType) {
+    const btn = document.createElement('button');
+    btn.className = 'retry-btn';
+    btn.textContent = '🔁 Retry Recommendation';
+    btn.addEventListener('click', () => retryRecommendation(btn, row, quizType));
+    return btn;
+}
+
+function retryRecommendation(btn, row, quizType) {
+    const password = el('passwordInput').value;
+    btn.disabled = true;
+    btn.textContent = 'Regenerating...';
+
+    fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'retryRecommendation',
+            payload: {
+                password: password,
+                quizType: quizType,
+                timestamp: row['Timestamp'],
+                studentName: row['Student Name'],
+                recommendationInput: row['Recommendation Input']
+            }
+        }),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (!data.success) {
+            btn.disabled = false;
+            btn.textContent = '🔁 Retry Recommendation';
+            alert(data.error || 'Retry failed. Please try again.');
+            return;
+        }
+        // Re-pull the dashboard so this row now shows the real recommendation
+        // instead of the failure placeholder.
+        fetch(GAS_WEB_APP_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'getDashboard', payload: { password: password } }),
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+        })
+        .then(res => res.json())
+        .then(refreshed => {
+            if (refreshed.success) {
+                dashboardData = refreshed.data;
+                renderTabContents();
+            } else {
+                btn.disabled = false;
+                btn.textContent = '🔁 Retry Recommendation';
+            }
+        });
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.textContent = '🔁 Retry Recommendation';
         alert('Could not reach the server: ' + err);
     });
 }
@@ -970,9 +1053,9 @@ function buildStudentRow(name, histories) {
     detail.className = 'student-detail hidden';
     detail.appendChild(buildDetailRow('Vocabulary', buildVocabDetailLine(vocabLP.latest, vocabLP.previous)));
     detail.appendChild(buildDetailRow('Vocab Mastery', buildVocabMasteryDetailLine(masteryLP.latest, masteryLP.previous)));
-    detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(knowledgeLP.latest, knowledgeLP.previous, 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(knowledgeLP.latest, knowledgeLP.previous, 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On', 'knowledge')));
     detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(skillsLP.latest, skillsLP.previous)));
-    detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(naviLP.latest, naviLP.previous, 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On')));
+    detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(naviLP.latest, naviLP.previous, 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On', 'navi')));
     detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(audioLP.latest, audioLP.previous)));
     rowWrap.appendChild(detail);
 
