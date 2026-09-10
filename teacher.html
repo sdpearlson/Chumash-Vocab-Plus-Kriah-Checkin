@@ -133,6 +133,18 @@
   .retry-btn:hover { border-color: #3e362e; }
   .retry-btn:disabled { opacity: 0.6; cursor: not-allowed; }
   .detail-chip.muted { color: #a6998a; }
+  /* Reading Fluency's mistakes list and recent-attempts trend both need to
+     read as their own line(s) below the score chips, not squeeze in as one
+     more inline chip — flex-basis: 100% forces a wrap inside .detail-line's
+     flex row without needing a whole separate layout. */
+  .mistakes-block, .audio-trend-block { flex-basis: 100%; margin-top: 2px; }
+  .mistakes-label { font-size: 0.85rem; color: #a6998a; margin-bottom: 2px; }
+  .mistake-row { font-size: 0.85rem; color: #6b6055; line-height: 1.6; }
+  .mistake-wrong { color: #a33; }
+  .mistake-arrow { color: #a6998a; margin: 0 4px; }
+  .mistake-right { color: #3e362e; font-weight: 600; }
+  .audio-trend-trail { font-size: 0.85rem; color: #a6998a; margin-bottom: 2px; }
+  .audio-trend-comment { font-size: 0.85rem; color: #6b6055; }
   .comparison-wrap { overflow-x: auto; margin-bottom: 26px; border: 1px solid #ece5d8; border-radius: 6px; }
   .comparison-table { width: auto; min-width: 100%; }
   .comparison-table th, .comparison-table td { white-space: nowrap; }
@@ -909,9 +921,103 @@ function audioOverallOrNull(row) {
     return isNaN(overall) ? null : overall;
 }
 
-function buildAudioDetailLine(row, previousRow) {
+function fmtShortDate(v) {
+    const d = toDate(v);
+    return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
+}
+
+// code.gs's formatMistakes joins each {read, correct} pair as
+// "read\nshould be: correct", with mistakes separated by a blank line —
+// this reverses that back into a list of pairs so the dashboard can lay
+// them out one per line instead of as one run-on inline chip (which is
+// what made this unreadable: a plain <span> collapses all those newlines).
+function parseMistakesText(text) {
+    if (!text || text === 'None') return [];
+    return text.split('\n\n').map(block => {
+        const idx = block.indexOf('\nshould be: ');
+        if (idx === -1) return null;
+        return { read: block.slice(0, idx), correct: block.slice(idx + '\nshould be: '.length) };
+    }).filter(Boolean);
+}
+
+function buildMistakesBlock(text) {
+    const mistakes = parseMistakesText(text);
+    if (!mistakes.length) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'mistakes-block';
+    const label = document.createElement('div');
+    label.className = 'mistakes-label';
+    label.textContent = 'Mistakes:';
+    wrap.appendChild(label);
+    mistakes.forEach(m => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'mistake-row';
+        const wrong = document.createElement('span');
+        wrong.className = 'mistake-wrong';
+        wrong.textContent = m.read;
+        const arrow = document.createElement('span');
+        arrow.className = 'mistake-arrow';
+        arrow.textContent = '→';
+        const right = document.createElement('span');
+        right.className = 'mistake-right';
+        right.textContent = m.correct;
+        rowEl.appendChild(wrong);
+        rowEl.appendChild(arrow);
+        rowEl.appendChild(right);
+        wrap.appendChild(rowEl);
+    });
+    return wrap;
+}
+
+// A short "recent attempts" trail (up to the last 4 successfully graded
+// attempts, oldest to newest) plus a one-line worded comparison between the
+// oldest and newest attempt shown — richer than the steady/up/down arrow
+// badge alone, so a teacher can see the actual trajectory without leaving
+// this row to dig through the History tab. Needs at least 2 graded
+// attempts to say anything; returns null otherwise.
+function buildAudioTrendBlock(gradedHistory) {
+    if (!gradedHistory || gradedHistory.length < 2) return null;
+    const recent = gradedHistory.slice(-4);
+    const wrap = document.createElement('div');
+    wrap.className = 'audio-trend-block';
+
+    const trail = document.createElement('div');
+    trail.className = 'audio-trend-trail';
+    trail.textContent = 'Recent attempts: ' + recent.map(r =>
+        Number(r['Overall']) + ' (' + fmtShortDate(r['Timestamp']) + ')'
+    ).join(' → ');
+    wrap.appendChild(trail);
+
+    const oldest = Number(recent[0]['Overall']);
+    const newest = Number(recent[recent.length - 1]['Overall']);
+    const delta = newest - oldest;
+    const rounded = Math.round(Math.abs(delta));
+    const spanCount = recent.length - 1;
+    const attemptsPhrase = `the last ${spanCount} attempt${spanCount === 1 ? '' : 's'}`;
+    const comment = document.createElement('div');
+    comment.className = 'audio-trend-comment';
+    if (rounded < 1) {
+        comment.textContent = `Steady over ${attemptsPhrase}.`;
+    } else if (delta > 0) {
+        comment.textContent = `Improved by ${rounded} point${rounded === 1 ? '' : 's'} over ${attemptsPhrase}.`;
+    } else {
+        comment.textContent = `Down ${rounded} point${rounded === 1 ? '' : 's'} over ${attemptsPhrase}.`;
+    }
+    wrap.appendChild(comment);
+    return wrap;
+}
+
+// Takes this student's full Reading Fluency history (sorted oldest-to-
+// newest, from sortedRowsByStudent) rather than just latest/previous, so it
+// can build the recent-attempts trend trail above in addition to comparing
+// the two most recent attempts the way every other section's detail line
+// already does.
+function buildAudioDetailLine(history) {
     const line = document.createElement('div');
     line.className = 'detail-line';
+    const list = history || [];
+    const row = list.length ? list[list.length - 1] : null;
+    const previousRow = list.length > 1 ? list[list.length - 2] : null;
     if (!row) { line.appendChild(detailChip('No submission yet', true)); return line; }
 
     const needsReview = isAudioNeedsReview(row);
@@ -943,7 +1049,14 @@ function buildAudioDetailLine(row, previousRow) {
     if (row['WPM']) line.appendChild(detailChip(row['WPM'] + ' WPM', true));
     AUDIO_DIMENSIONS.filter(dim => dim !== 'Overall').forEach(dim => { if (row[dim]) line.appendChild(detailChip(dim + ': ' + row[dim], true)); });
     if (row['Reading Summary']) line.appendChild(detailChip(row['Reading Summary'], true));
-    if (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None') line.appendChild(detailChip('Mistakes: ' + row['Specific Mistakes'], true));
+
+    const trendBlock = buildAudioTrendBlock(list.filter(r => audioOverallOrNull(r) !== null));
+    if (trendBlock) line.appendChild(trendBlock);
+
+    const mistakesBlock = (row['Specific Mistakes'] && row['Specific Mistakes'] !== 'None')
+        ? buildMistakesBlock(row['Specific Mistakes']) : null;
+    if (mistakesBlock) line.appendChild(mistakesBlock);
+
     const link = buildAudioLink(row);
     if (link) line.appendChild(link);
     return line;
@@ -1047,7 +1160,7 @@ function buildStudentRow(name, histories) {
     const knowledgeLP = latestAndPrevious(histories.knowledge.get(name) || []);
     const skillsLP = latestAndPrevious(histories.skills.get(name) || []);
     const naviLP = latestAndPrevious(histories.navi.get(name) || []);
-    const audioLP = latestAndPrevious(histories.audio.get(name) || []);
+    const audioHistory = histories.audio.get(name) || []; // buildAudioDetailLine wants the full trail, not just latest/previous
 
     const detail = document.createElement('div');
     detail.className = 'student-detail hidden';
@@ -1056,7 +1169,7 @@ function buildStudentRow(name, histories) {
     detail.appendChild(buildDetailRow('Chumash Knowledge', buildFractionDetailLine(knowledgeLP.latest, knowledgeLP.previous, 'Total Score', KNOWLEDGE_SUBSECTIONS, 'Areas to Focus On', 'knowledge')));
     detail.appendChild(buildDetailRow('Chumash Skills', buildSkillsDetailLine(skillsLP.latest, skillsLP.previous)));
     detail.appendChild(buildDetailRow('Navi Knowledge', buildFractionDetailLine(naviLP.latest, naviLP.previous, 'Total Score', NAVI_SUBSECTIONS, 'Areas to Focus On', 'navi')));
-    detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(audioLP.latest, audioLP.previous)));
+    detail.appendChild(buildDetailRow('Reading Fluency', buildAudioDetailLine(audioHistory)));
     rowWrap.appendChild(detail);
 
     toggle.addEventListener('click', () => {
